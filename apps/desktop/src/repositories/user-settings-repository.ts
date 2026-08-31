@@ -124,7 +124,7 @@ export class UserSettingsRepository implements UIPreferences {
 	}
 
 	getChatPanelBetaEnabled(): boolean {
-		return readStorageBoolean(CHAT_PANEL_BETA_ENABLED_STORAGE_KEY, false)
+		return readStorageBoolean(CHAT_PANEL_BETA_ENABLED_STORAGE_KEY, true)
 	}
 
 	setChatPanelBetaEnabled(enabled: boolean): boolean {

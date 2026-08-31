@@ -1,4 +1,12 @@
+import { Button } from "@mdit/ui/components/button"
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@mdit/ui/components/tooltip"
 import { cn } from "@mdit/ui/lib/utils"
+import { Sparkles } from "lucide-react"
 import { useShallow } from "zustand/shallow"
 import { WindowPinButton } from "@/components/quick-note/window-pin-button"
 import { useCurrentWindowLabel } from "@/hooks/use-current-window-label"
@@ -21,6 +29,8 @@ export function Header({
 		workspacePath,
 		isEditMode,
 		tabCount,
+		isChatPanelOpen,
+		toggleChatPanelOpen,
 	} = useStore(
 		useShallow((s) => ({
 			isFileExplorerOpen: s.isFileExplorerOpen,
@@ -29,6 +39,8 @@ export function Header({
 			workspacePath: s.workspacePath,
 			isEditMode: s.isEditMode,
 			tabCount: s.tabs.length,
+			isChatPanelOpen: s.isChatPanelOpen,
+			toggleChatPanelOpen: s.toggleChatPanelOpen,
 		})),
 	)
 	const isCollectionViewOpen = currentCollectionPath !== null
@@ -58,6 +70,29 @@ export function Header({
 			<div className="flex items-center gap-0.5 ml-auto">
 				{showPin && <WindowPinButton />}
 				{showInfoButton && <InfoButton />}
+				<TooltipProvider>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button
+								variant="ghost"
+								size="icon"
+								className={cn(
+									"size-7 rounded-md transition-colors",
+									isChatPanelOpen
+										? "text-purple-500 bg-purple-500/15"
+										: "text-muted-foreground hover:text-foreground",
+								)}
+								onClick={toggleChatPanelOpen}
+								title="AI 智能体助手 (⌘+Shift+L)"
+							>
+								<Sparkles className="size-4" />
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>
+							<p>AI 智能体助手 ({isMac() ? "⌘⇧L" : "Ctrl+Shift+L"})</p>
+						</TooltipContent>
+					</Tooltip>
+				</TooltipProvider>
 			</div>
 		</div>
 	)
