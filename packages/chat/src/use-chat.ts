@@ -44,6 +44,7 @@ export type SendMessagePayload =
 			text: string
 			files?: Array<{ url: string; mediaType?: string; filename?: string }>
 			contextSnippet?: string
+			policyInstruction?: string
 			referencedFiles?: string[]
 	  }
 
@@ -144,6 +145,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
 
 	const sessionIdRef = useRef(crypto.randomUUID())
 	const latestContextSnippetRef = useRef<string | null>(null)
+	const latestPolicyInstructionRef = useRef<string | null>(null)
 
 	const panelChatTools = useMemo(
 		() =>
@@ -225,10 +227,18 @@ export function useChat(options: UseChatOptions): UseChatResult {
 								latestContextSnippetRef.current = null
 							}
 
+							const policyInstruction = latestPolicyInstructionRef.current
+							const systemWithPolicy = [
+								effectiveSystemPrompt,
+								policyInstruction,
+							]
+								.filter(Boolean)
+								.join("\n\n")
+
 							const result = streamText({
 								...buildProviderRequestOptions(
 									activeConfig.provider,
-									effectiveSystemPrompt,
+									systemWithPolicy,
 								),
 								abortSignal,
 								messages: modelMessages,
@@ -244,7 +254,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
 									: {}),
 							})
 
-							writer.merge(result.toUIMessageStream())
+							await writer.merge(result.toUIMessageStream())
 						},
 					})
 
@@ -293,8 +303,11 @@ export function useChat(options: UseChatOptions): UseChatResult {
 			}
 			if (typeof payload === "string") {
 				const normalized = payload.trim()
-				if (!normalized) return
+				if (!normalized) {
+					return
+				}
 				latestContextSnippetRef.current = null
+				latestPolicyInstructionRef.current = null
 				await chat.sendMessage({ text: normalized })
 			} else {
 				const normalized = payload.text.trim()
@@ -302,6 +315,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
 					return
 				}
 				latestContextSnippetRef.current = payload.contextSnippet ?? null
+				latestPolicyInstructionRef.current = payload.policyInstruction ?? null
 				await chat.sendMessage({
 					text: normalized,
 					files: payload.files as any,
