@@ -3,6 +3,11 @@ import { jsonSchema, type ToolSet, tool } from "ai"
 export type PanelChatToolDeps = {
 	readTextFile: (path: string) => Promise<string>
 	getActiveDocumentPath: () => string | null
+	writeTextFile?: (path: string, content: string) => Promise<void>
+	searchNotes?: (
+		query: string,
+	) => Promise<Array<{ path: string; name: string; snippet?: string }>>
+	createNote?: (name: string, content: string) => Promise<string>
 }
 
 type ReadDocumentResult = {
@@ -17,10 +22,13 @@ export const PANEL_CHAT_TOOLS_SYSTEM_SUFFIX = `
 You have access to tools for interacting with the user's workspace notes:
 - read_active_document: Reads the note currently open in the active editor tab.
 - read_specified_document: Reads any markdown document specified by its file path or filename.
-Use these tools when the user's question asks to inspect, summarize, analyze, or compare notes.`
+- search_vault_notes: Searches across all notes in the vault/workspace by keywords.
+- create_new_document: Creates a new markdown note in the workspace.
+- append_to_active_document: Appends markdown text to the end of the currently active note.
+Use these tools autonomously when the user's question asks to inspect, search, create, or modify notes.`
 
 export function createPanelChatTools(deps: PanelChatToolDeps): ToolSet {
-	return {
+	const tools: ToolSet = {
 		read_active_document: tool({
 			description:
 				"Read the markdown (or text) file open in the user's active editor tab from disk. Call when answering requires the active document contents.",
@@ -93,4 +101,119 @@ export function createPanelChatTools(deps: PanelChatToolDeps): ToolSet {
 			},
 		}),
 	}
+
+	if (deps.searchNotes) {
+		const searchNotesFn = deps.searchNotes
+		tools.search_vault_notes = tool({
+			description:
+				"Search across all notes in the workspace by query keywords or semantic topics.",
+			inputSchema: jsonSchema({
+				type: "object",
+				properties: {
+					query: {
+						type: "string",
+						description: "The search keywords or query.",
+					},
+				},
+				required: ["query"],
+				additionalProperties: false,
+			}),
+			execute: async ({ query }: { query: string }) => {
+				try {
+					const results = await searchNotesFn(query)
+					return {
+						results: results.slice(0, 10),
+						count: results.length,
+						error: null,
+					}
+				} catch (error) {
+					const message =
+						error instanceof Error && error.message
+							? error.message
+							: "Failed to search vault notes."
+					return { results: [], count: 0, error: message }
+				}
+			},
+		})
+	}
+
+	if (deps.createNote) {
+		const createNoteFn = deps.createNote
+		tools.create_new_document = tool({
+			description:
+				"Create a new markdown note in the workspace with the given title and content.",
+			inputSchema: jsonSchema({
+				type: "object",
+				properties: {
+					title: {
+						type: "string",
+						description: "The title or filename of the new note (without .md).",
+					},
+					content: {
+						type: "string",
+						description: "The initial markdown content of the note.",
+					},
+				},
+				required: ["title", "content"],
+				additionalProperties: false,
+			}),
+			execute: async ({
+				title,
+				content,
+			}: {
+				title: string
+				content: string
+			}) => {
+				try {
+					const path = await createNoteFn(title, content)
+					return { success: true, path, error: null }
+				} catch (error) {
+					const message =
+						error instanceof Error && error.message
+							? error.message
+							: "Failed to create note."
+					return { success: false, path: null, error: message }
+				}
+			},
+		})
+	}
+
+	if (deps.writeTextFile) {
+		const writeTextFileFn = deps.writeTextFile
+		tools.append_to_active_document = tool({
+			description:
+				"Append markdown text to the end of the user's currently focused editor tab.",
+			inputSchema: jsonSchema({
+				type: "object",
+				properties: {
+					content: {
+						type: "string",
+						description: "The markdown text content to append.",
+					},
+				},
+				required: ["content"],
+				additionalProperties: false,
+			}),
+			execute: async ({ content }: { content: string }) => {
+				const path = deps.getActiveDocumentPath()
+				if (!path) {
+					return { success: false, error: "No active document tab open." }
+				}
+				try {
+					const current = await deps.readTextFile(path)
+					const updated = `${current}\n\n${content}`
+					await writeTextFileFn(path, updated)
+					return { success: true, path, error: null }
+				} catch (error) {
+					const message =
+						error instanceof Error && error.message
+							? error.message
+							: "Failed to append to active document."
+					return { success: false, error: message }
+				}
+			},
+		})
+	}
+
+	return tools
 }

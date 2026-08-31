@@ -1,19 +1,22 @@
 import { Button } from "@mdit/ui/components/button"
 import { cn } from "@mdit/ui/lib/utils"
 import {
+	IconBolt,
 	IconCheck,
 	IconCopy,
+	IconCursorText,
 	IconFileDescription,
 	IconFilePlus,
 	IconFileText,
 	IconListCheck,
 	IconPaperclip,
 	IconPencil,
+	IconRobot,
 	IconSparkles,
 	IconX,
 } from "@tabler/icons-react"
 import type { ReactNode } from "react"
-import { useCallback, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 
 import {
 	Conversation,
@@ -64,6 +67,13 @@ export type AttachedContextFile = {
 	name: string
 }
 
+export type NoteMentionItem = {
+	path: string
+	name: string
+}
+
+export type ChatMode = "quick" | "agent"
+
 export type ChatProps = UseChatOptions & {
 	tools?: ReactNode | ((props: ChatToolsRenderProps) => ReactNode)
 	className?: string
@@ -72,10 +82,14 @@ export type ChatProps = UseChatOptions & {
 	supportsVision?: boolean
 	activeDocumentName?: string | null
 	attachedContextFiles?: AttachedContextFile[]
+	availableNotes?: NoteMentionItem[]
+	chatMode?: ChatMode
+	onChatModeChange?: (mode: ChatMode) => void
 	onAddContextFile?: (file: AttachedContextFile) => void
 	onRemoveContextFile?: (path: string) => void
 	onClearContextFiles?: () => void
 	resolveContextSnippet?: () => Promise<string | null>
+	onInsertAtCursor?: (content: string) => void | Promise<void>
 	onInsertToActiveNote?: (content: string) => void | Promise<void>
 	onCreateNewNote?: (content: string) => void | Promise<void>
 }
@@ -157,15 +171,26 @@ export function Chat({
 	supportsVision = true,
 	activeDocumentName,
 	attachedContextFiles = [],
+	availableNotes = [],
+	chatMode = "quick",
+	onChatModeChange,
 	onAddContextFile,
 	onRemoveContextFile,
 	onClearContextFiles,
 	resolveContextSnippet,
+	onInsertAtCursor,
 	onInsertToActiveNote,
 	onCreateNewNote,
 	...useChatOptions
 }: ChatProps) {
 	const { enabled = true } = useChatOptions
+	const [internalMode, setInternalMode] = useState<ChatMode>(chatMode)
+	const currentMode = onChatModeChange ? chatMode : internalMode
+	const handleModeChange = (mode: ChatMode) => {
+		setInternalMode(mode)
+		onChatModeChange?.(mode)
+	}
+
 	const {
 		messages,
 		pending,
@@ -175,21 +200,35 @@ export function Chat({
 	} = useChat(useChatOptions)
 
 	const [isDragOver, setIsDragOver] = useState(false)
+	const [showSlashMenu, setShowSlashMenu] = useState(false)
+	const [showMentionMenu, setShowMentionMenu] = useState(false)
+	const [mentionSearch, setMentionSearch] = useState("")
 
 	const textInputDisabled = !enabled
 	const submitDisabled = pending || !enabled
 
-	const newChatText = labels?.newChat ?? "New chat"
-	const noMessagesText = labels?.noMessages ?? "智能体已就绪"
+	const newChatText = labels?.newChat ?? "新对话"
+	const noMessagesText =
+		currentMode === "agent"
+			? "🛠️ 智能体模式已就绪"
+			: (labels?.noMessages ?? "智能助手已就绪")
 	const startConversationText =
-		labels?.startConversation ?? "随时向 AI 助手提问、总结笔记或执行多步任务"
+		currentMode === "agent"
+			? "智能体将自主探索工作区笔记、检索知识、多步执行并为您规划"
+			: (labels?.startConversation ??
+				"随时向 AI 助手提问、总结笔记或执行多步任务")
 	const aiSettingsText = labels?.aiSettings ?? "AI 设置"
 	const askAssistantText =
-		labels?.askAssistant ?? "向智能体提问，或按快捷键调用..."
+		currentMode === "agent"
+			? "输入指令或任务，智能体将自动规划并调用工具..."
+			: (labels?.askAssistant ??
+				"向智能体提问，输入 @ 引用笔记，输入 / 快捷指令...")
 	const attachImageText = labels?.attachImage ?? "附加图片"
 
 	const handleSubmit = useCallback(
 		async (message: PromptInputMessage) => {
+			setShowSlashMenu(false)
+			setShowMentionMenu(false)
 			const filesPayload =
 				message.files.length > 0
 					? message.files.map((f) => ({
@@ -215,6 +254,8 @@ export function Chat({
 	const handleQuickPrompt = useCallback(
 		async (promptText: string) => {
 			if (pending) return
+			setShowSlashMenu(false)
+			setShowMentionMenu(false)
 			const contextSnippet = resolveContextSnippet
 				? await resolveContextSnippet()
 				: undefined
@@ -280,37 +321,66 @@ export function Chat({
 				? `当前笔记 (${activeDocumentName})`
 				: "当前笔记"
 
+	const filteredNotes = useMemo(() => {
+		if (!mentionSearch.trim()) return availableNotes.slice(0, 10)
+		const q = mentionSearch.toLowerCase()
+		return availableNotes
+			.filter(
+				(n) =>
+					n.name.toLowerCase().includes(q) || n.path.toLowerCase().includes(q),
+			)
+			.slice(0, 10)
+	}, [availableNotes, mentionSearch])
+
 	return (
 		<section
 			className={cn("flex h-full min-h-0 flex-col bg-background/50", className)}
 		>
-			{/* Top Header */}
-			<div className="flex shrink-0 items-center justify-between border-b border-border/40 p-2 gap-1.5">
-				<div className="flex items-center gap-1.5 min-w-0">
+			{/* Top Header: Dual Modes & Actions */}
+			<div className="flex shrink-0 items-center justify-between border-b border-border/40 px-2 py-1.5 gap-1.5">
+				{/* Mode Switcher Tabs */}
+				<div className="inline-flex items-center rounded-lg bg-muted/60 p-0.5 border border-border/40">
+					<button
+						type="button"
+						onClick={() => handleModeChange("quick")}
+						className={cn(
+							"inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all",
+							currentMode === "quick"
+								? "bg-background text-foreground shadow-2xs"
+								: "text-muted-foreground hover:text-foreground",
+						)}
+					>
+						<IconBolt className="size-3 text-amber-500" />
+						<span>快速问答</span>
+					</button>
+					<button
+						type="button"
+						onClick={() => handleModeChange("agent")}
+						className={cn(
+							"inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all",
+							currentMode === "agent"
+								? "bg-background text-purple-600 dark:text-purple-300 shadow-2xs font-semibold"
+								: "text-muted-foreground hover:text-foreground",
+						)}
+					>
+						<IconRobot className="size-3 text-purple-500" />
+						<span>智能体</span>
+					</button>
+				</div>
+
+				<div className="flex items-center gap-1">
 					<Button
 						onClick={startNewChat}
 						size="sm"
 						type="button"
-						variant="outline"
-						className="h-7 text-xs rounded-md"
+						variant="ghost"
+						className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md"
+						title="开启全新会话"
 					>
-						<IconSparkles className="size-3.5 mr-1 text-purple-500" />
+						<IconSparkles className="size-3 mr-1 text-purple-500" />
 						{newChatText}
 					</Button>
 				</div>
-				{attachedContextFiles.length > 0 ? (
-					<div className="flex items-center gap-1 text-[11px] text-purple-600 dark:text-purple-300 font-medium">
-						<span>📎 已指定 {attachedContextFiles.length} 篇上下文</span>
-					</div>
-				) : activeDocumentName ? (
-					<div
-						className="flex items-center gap-1 max-w-[170px] truncate rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground font-mono"
-						title={`当前关联笔记: ${activeDocumentName}`}
-					>
-						<IconFileText className="size-3 shrink-0 text-primary/70" />
-						<span className="truncate">{activeDocumentName}</span>
-					</div>
-				) : null}
 			</div>
 
 			<Conversation className="min-h-0 flex-1">
@@ -318,7 +388,11 @@ export function Chat({
 					{messages.length === 0 ? (
 						<ConversationEmptyState
 							icon={
-								<IconSparkles className="size-8 text-purple-500 opacity-80" />
+								currentMode === "agent" ? (
+									<IconRobot className="size-8 text-purple-500 opacity-90 animate-pulse" />
+								) : (
+									<IconSparkles className="size-8 text-purple-500 opacity-80" />
+								)
 							}
 							title={noMessagesText}
 							description={startConversationText}
@@ -432,9 +506,23 @@ export function Chat({
 												)}
 												<MessageResponse>{message.content}</MessageResponse>
 
-												{/* Message Bottom Action Bar */}
-												<div className="flex items-center gap-1 pt-1.5 mt-2 border-t border-border/30 opacity-70 hover:opacity-100 transition-opacity">
+												{/* Message Bottom Action Bar (Obsidian Copilot Style) */}
+												<div className="flex flex-wrap items-center gap-1 pt-1.5 mt-2 border-t border-border/30 opacity-75 hover:opacity-100 transition-opacity">
 													<CopyMessageButton content={message.content} />
+
+													{onInsertAtCursor && (
+														<Button
+															size="sm"
+															variant="ghost"
+															className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+															onClick={() => onInsertAtCursor(message.content)}
+															title="在当前笔记的光标处直接插入"
+														>
+															<IconCursorText className="size-3 text-purple-500" />
+															<span className="ml-1 text-[11px]">光标插入</span>
+														</Button>
+													)}
+
 													{onInsertToActiveNote && (
 														<Button
 															size="sm"
@@ -446,16 +534,17 @@ export function Chat({
 															title="追加插入到当前笔记文末"
 														>
 															<IconFileText className="size-3" />
-															<span className="ml-1 text-[11px]">插入笔记</span>
+															<span className="ml-1 text-[11px]">追加文末</span>
 														</Button>
 													)}
+
 													{onCreateNewNote && (
 														<Button
 															size="sm"
 															variant="ghost"
 															className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
 															onClick={() => onCreateNewNote(message.content)}
-															title="另存为新笔记"
+															title="另存为新笔记并打开"
 														>
 															<IconFilePlus className="size-3" />
 															<span className="ml-1 text-[11px]">
@@ -486,6 +575,157 @@ export function Chat({
 				{isDragOver && (
 					<div className="absolute inset-2 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-purple-500 bg-purple-500/10 backdrop-blur-xs text-xs font-medium text-purple-600 dark:text-purple-300 pointer-events-none">
 						📥 松开以将此笔记添加到 AI 对话上下文
+					</div>
+				)}
+
+				{/* Slash Commands Popover */}
+				{showSlashMenu && (
+					<div className="absolute bottom-[calc(100%-8px)] left-2 right-2 z-50 rounded-lg border border-border/60 bg-popover/95 p-1.5 shadow-lg backdrop-blur-md">
+						<div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-muted-foreground border-b border-border/40 mb-1">
+							<span>⚡ 快捷指令 (Slash Commands)</span>
+							<button
+								type="button"
+								onClick={() => setShowSlashMenu(false)}
+								className="text-muted-foreground hover:text-foreground"
+							>
+								<IconX className="size-3" />
+							</button>
+						</div>
+						<div className="grid grid-cols-1 gap-1">
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请帮我深度总结${contextTargetLabel}的核心要点与结论。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<span className="font-mono text-purple-500 font-bold">
+									/summary
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									总结当前笔记/选区要点
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请提取${contextTargetLabel}中的所有行动项，整理成 Markdown Todo 清单。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<span className="font-mono text-emerald-500 font-bold">
+									/todo
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									提取待办与行动项
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请帮我润色优化${contextTargetLabel}的语言表达与段落结构。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<span className="font-mono text-amber-500 font-bold">
+									/polish
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									润色与结构优化
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请用通俗易懂的语言深度解析${contextTargetLabel}的核心概念与背景。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<span className="font-mono text-blue-500 font-bold">
+									/explain
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									深度解析核心概念
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请将${contextTargetLabel}的内容进行高水平专业中英文互译。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<span className="font-mono text-cyan-500 font-bold">
+									/translate
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									专业中英互译
+								</span>
+							</button>
+						</div>
+					</div>
+				)}
+
+				{/* @ Mention Popover */}
+				{showMentionMenu && (
+					<div className="absolute bottom-[calc(100%-8px)] left-2 right-2 z-50 rounded-lg border border-border/60 bg-popover/95 p-1.5 shadow-lg backdrop-blur-md">
+						<div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-muted-foreground border-b border-border/40 mb-1">
+							<span>@ 引用工作区笔记作为上下文</span>
+							<button
+								type="button"
+								onClick={() => setShowMentionMenu(false)}
+								className="text-muted-foreground hover:text-foreground"
+							>
+								<IconX className="size-3" />
+							</button>
+						</div>
+						<div className="px-1.5 pb-1">
+							<input
+								type="text"
+								placeholder="搜索笔记名称..."
+								value={mentionSearch}
+								onChange={(e) => setMentionSearch(e.target.value)}
+								className="w-full h-6 px-2 text-xs bg-muted/60 border border-border/50 rounded-md focus:outline-hidden"
+							/>
+						</div>
+						<div className="max-h-40 overflow-y-auto space-y-0.5">
+							{filteredNotes.length === 0 ? (
+								<div className="p-2 text-center text-xs text-muted-foreground">
+									未找到匹配的笔记
+								</div>
+							) : (
+								filteredNotes.map((note) => (
+									<button
+										key={note.path}
+										type="button"
+										onClick={() => {
+											onAddContextFile?.(note)
+											setShowMentionMenu(false)
+											setMentionSearch("")
+										}}
+										className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+									>
+										<div className="flex items-center gap-1.5 truncate">
+											<IconFileText className="size-3 text-purple-500 shrink-0" />
+											<span className="truncate">{note.name}</span>
+										</div>
+										<span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+											{note.path}
+										</span>
+									</button>
+								))
+							)}
+						</div>
 					</div>
 				)}
 
@@ -549,6 +789,36 @@ export function Chat({
 					/>
 					<PromptInputFooter>
 						<div className="flex items-center gap-1">
+							{/* @ Mention trigger */}
+							<PromptInputButton
+								type="button"
+								size="icon-sm"
+								tooltip="引用笔记上下文 (@)"
+								onClick={() => {
+									setShowMentionMenu((prev) => !prev)
+									setShowSlashMenu(false)
+								}}
+							>
+								<span className="font-mono text-xs font-bold text-muted-foreground hover:text-foreground">
+									@
+								</span>
+							</PromptInputButton>
+
+							{/* / Slash trigger */}
+							<PromptInputButton
+								type="button"
+								size="icon-sm"
+								tooltip="快捷指令 (/)"
+								onClick={() => {
+									setShowSlashMenu((prev) => !prev)
+									setShowMentionMenu(false)
+								}}
+							>
+								<span className="font-mono text-xs font-bold text-muted-foreground hover:text-foreground">
+									/
+								</span>
+							</PromptInputButton>
+
 							{supportsVision && <AttachmentButton tooltip={attachImageText} />}
 							{toolsContent ? (
 								<PromptInputTools>{toolsContent}</PromptInputTools>

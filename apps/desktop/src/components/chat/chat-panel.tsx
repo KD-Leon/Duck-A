@@ -130,12 +130,59 @@ function ChatPanelContent() {
 		return match?.model ?? chatConfig.model
 	}, [chatConfig, enabledChatModels])
 
+	const entries = useStore((state) => state.entries)
+	const activeTabPath = useStore((state) => state.getActiveTabPath())
+	const workspacePath = useStore((state) => state.workspacePath)
+	const openTab = useStore((state) => state.openTab)
+	const aiContextFiles = useStore((state) => state.aiContextFiles)
+	const addAiContextFile = useStore((state) => state.addAiContextFile)
+	const removeAiContextFile = useStore((state) => state.removeAiContextFile)
+	const clearAiContextFiles = useStore((state) => state.clearAiContextFiles)
+
+	const flatFiles = useMemo(() => {
+		const result: Array<{ path: string; name: string }> = []
+		const stack = [...entries]
+		while (stack.length > 0) {
+			const item = stack.pop()
+			if (!item) continue
+			if (!item.isDirectory && item.name.endsWith(".md")) {
+				result.push({ path: item.path, name: item.name })
+			} else if (item.children) {
+				stack.push(...item.children)
+			}
+		}
+		return result
+	}, [entries])
+
+	const availableNotes = useMemo(() => {
+		return flatFiles
+	}, [flatFiles])
+
 	const panelChatToolDeps = useMemo(
 		() => ({
 			getActiveDocumentPath: () => useStore.getState().getActiveTabPath(),
 			readTextFile,
+			writeTextFile,
+			searchNotes: async (query: string) => {
+				const q = query.toLowerCase()
+				return flatFiles.filter(
+					(e) =>
+						e.name.toLowerCase().includes(q) ||
+						e.path.toLowerCase().includes(q),
+				)
+			},
+			createNote: async (title: string, content: string) => {
+				const ws = useStore.getState().workspacePath
+				if (!ws) throw new Error("No active workspace.")
+				const name = title.endsWith(".md") ? title : `${title}.md`
+				const filePath = `${ws}/${name}`
+				await writeTextFile(filePath, content)
+				await useStore.getState().refreshWorkspaceEntries()
+				await useStore.getState().openTab(filePath)
+				return filePath
+			},
 		}),
-		[],
+		[flatFiles],
 	)
 
 	const handleModelChange = useCallback(
@@ -166,14 +213,6 @@ function ChatPanelContent() {
 		},
 		[enabledChatModels, selectModel],
 	)
-
-	const activeTabPath = useStore((state) => state.getActiveTabPath())
-	const workspacePath = useStore((state) => state.workspacePath)
-	const openTab = useStore((state) => state.openTab)
-	const aiContextFiles = useStore((state) => state.aiContextFiles)
-	const addAiContextFile = useStore((state) => state.addAiContextFile)
-	const removeAiContextFile = useStore((state) => state.removeAiContextFile)
-	const clearAiContextFiles = useStore((state) => state.clearAiContextFiles)
 
 	const activeDocumentName = useMemo(() => {
 		if (!activeTabPath) return null
@@ -211,6 +250,25 @@ function ChatPanelContent() {
 
 		return `\n\n=== 关联的笔记上下文参考资料 ===\n${validSnippets.join("\n\n")}\n================================\n请严格基于上述关联笔记的内容来回答或执行指令。`
 	}, [activeDocumentName, activeTabPath, aiContextFiles])
+
+	const handleInsertAtCursor = useCallback(
+		async (content: string) => {
+			if (!activeTabPath) {
+				toast.error("当前未打开任何笔记，无法插入")
+				return
+			}
+			try {
+				const current = await readTextFile(activeTabPath)
+				const newContent = `${current}\n\n${content}`
+				await writeTextFile(activeTabPath, newContent)
+				toast.success("已成功将内容插入到当前笔记中")
+			} catch (err) {
+				console.error("Failed to insert at cursor", err)
+				toast.error("插入内容失败")
+			}
+		},
+		[activeTabPath],
+	)
 
 	const handleInsertToActiveNote = useCallback(
 		async (content: string) => {
@@ -268,10 +326,12 @@ function ChatPanelContent() {
 			labels={t.chat}
 			activeDocumentName={activeDocumentName}
 			attachedContextFiles={aiContextFiles}
+			availableNotes={availableNotes}
 			onAddContextFile={addAiContextFile}
 			onRemoveContextFile={removeAiContextFile}
 			onClearContextFiles={clearAiContextFiles}
 			resolveContextSnippet={resolveContextSnippet}
+			onInsertAtCursor={handleInsertAtCursor}
 			onInsertToActiveNote={handleInsertToActiveNote}
 			onCreateNewNote={handleCreateNewNote}
 			tools={({ pending }) => (
