@@ -43,6 +43,8 @@ export type SendMessagePayload =
 	| {
 			text: string
 			files?: Array<{ url: string; mediaType?: string; filename?: string }>
+			contextSnippet?: string
+			referencedFiles?: string[]
 	  }
 
 export type UseChatResult = {
@@ -110,6 +112,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
 	} = options
 
 	const sessionIdRef = useRef(crypto.randomUUID())
+	const latestContextSnippetRef = useRef<string | null>(null)
 
 	const panelChatTools = useMemo(
 		() =>
@@ -157,7 +160,40 @@ export function useChat(options: UseChatOptions): UseChatResult {
 
 					const stream = createUIMessageStream({
 						execute: async ({ writer }) => {
-							const modelMessages = await convertToModelMessages(messages)
+							const rawModelMessages = await convertToModelMessages(messages)
+							let modelMessages = rawModelMessages
+							const contextSnippet = latestContextSnippetRef.current
+							if (contextSnippet && modelMessages.length > 0) {
+								const lastIdx = modelMessages.length - 1
+								const lastMsg = modelMessages[lastIdx]
+								if (lastMsg.role === "user") {
+									if (typeof lastMsg.content === "string") {
+										modelMessages = [
+											...modelMessages.slice(0, lastIdx),
+											{
+												...lastMsg,
+												content: `${lastMsg.content}\n\n${contextSnippet}`,
+											},
+										]
+									} else if (Array.isArray(lastMsg.content)) {
+										modelMessages = [
+											...modelMessages.slice(0, lastIdx),
+											{
+												...lastMsg,
+												content: [
+													...lastMsg.content,
+													{
+														type: "text",
+														text: `\n\n${contextSnippet}`,
+													} as any,
+												],
+											},
+										]
+									}
+								}
+								latestContextSnippetRef.current = null
+							}
+
 							const result = streamText({
 								...buildProviderRequestOptions(
 									activeConfig.provider,
@@ -226,12 +262,14 @@ export function useChat(options: UseChatOptions): UseChatResult {
 			if (typeof payload === "string") {
 				const normalized = payload.trim()
 				if (!normalized) return
+				latestContextSnippetRef.current = null
 				await chat.sendMessage({ text: normalized })
 			} else {
 				const normalized = payload.text.trim()
 				if (!normalized && (!payload.files || payload.files.length === 0)) {
 					return
 				}
+				latestContextSnippetRef.current = payload.contextSnippet ?? null
 				await chat.sendMessage({
 					text: normalized,
 					files: payload.files as any,

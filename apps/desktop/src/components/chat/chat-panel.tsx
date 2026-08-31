@@ -10,6 +10,7 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { fetch as tauriHttpFetch } from "@tauri-apps/plugin-http"
 import { motion } from "motion/react"
 import { useCallback, useMemo } from "react"
+import { toast } from "sonner"
 import { useShallow } from "zustand/shallow"
 import { useResizablePanel } from "@/hooks/use-resizable-panel"
 import { useTranslation } from "@/i18n"
@@ -168,6 +169,7 @@ function ChatPanelContent() {
 
 	const activeTabPath = useStore((state) => state.getActiveTabPath())
 	const workspacePath = useStore((state) => state.workspacePath)
+	const openTab = useStore((state) => state.openTab)
 	const aiContextFiles = useStore((state) => state.aiContextFiles)
 	const addAiContextFile = useStore((state) => state.addAiContextFile)
 	const removeAiContextFile = useStore((state) => state.removeAiContextFile)
@@ -178,15 +180,52 @@ function ChatPanelContent() {
 		return activeTabPath.split("/").pop() ?? activeTabPath
 	}, [activeTabPath])
 
+	const resolveContextSnippet = useCallback(async () => {
+		const targets =
+			aiContextFiles.length > 0
+				? aiContextFiles
+				: activeTabPath && activeDocumentName
+					? [{ path: activeTabPath, name: activeDocumentName }]
+					: []
+
+		if (targets.length === 0) return null
+
+		const fileSnippets = await Promise.all(
+			targets.map(async (file) => {
+				try {
+					const text = await readTextFile(file.path)
+					const maxChars = 5000
+					const truncated =
+						text.length > maxChars
+							? `${text.slice(0, maxChars)}\n...[文件后续内容已截断]`
+							: text
+					return `【笔记: ${file.name}】（路径: ${file.path}）：\n\`\`\`markdown\n${truncated}\n\`\`\``
+				} catch {
+					return null
+				}
+			}),
+		)
+
+		const validSnippets = fileSnippets.filter(Boolean)
+		if (validSnippets.length === 0) return null
+
+		return `\n\n=== 关联的笔记上下文参考资料 ===\n${validSnippets.join("\n\n")}\n================================\n请严格基于上述关联笔记的内容来回答或执行指令。`
+	}, [activeDocumentName, activeTabPath, aiContextFiles])
+
 	const handleInsertToActiveNote = useCallback(
 		async (content: string) => {
-			if (!activeTabPath) return
+			if (!activeTabPath) {
+				toast.error("当前未打开任何笔记，无法插入")
+				return
+			}
 			try {
 				const current = await readTextFile(activeTabPath)
 				const newContent = `${current}\n\n${content}`
 				await writeTextFile(activeTabPath, newContent)
+				toast.success("已成功追加内容到当前笔记末尾")
 			} catch (err) {
 				console.error("Failed to insert to active note", err)
+				toast.error("插入内容失败")
 			}
 		},
 		[activeTabPath],
@@ -194,18 +233,24 @@ function ChatPanelContent() {
 
 	const handleCreateNewNote = useCallback(
 		async (content: string) => {
-			if (!workspacePath) return
+			if (!workspacePath) {
+				toast.error("未打开工作区，无法新建笔记")
+				return
+			}
 			try {
 				const dateStr = new Date().toISOString().slice(0, 10)
 				const fileName = `AI-Note-${dateStr}-${Date.now().toString().slice(-4)}.md`
 				const filePath = `${workspacePath}/${fileName}`
 				await writeTextFile(filePath, content)
 				await useStore.getState().refreshWorkspaceEntries()
+				await openTab(filePath)
+				toast.success(`已创建并打开新笔记: ${fileName}`)
 			} catch (err) {
 				console.error("Failed to create new note from AI", err)
+				toast.error("创建新笔记失败")
 			}
 		},
-		[workspacePath],
+		[openTab, workspacePath],
 	)
 
 	return (
@@ -226,6 +271,7 @@ function ChatPanelContent() {
 			onAddContextFile={addAiContextFile}
 			onRemoveContextFile={removeAiContextFile}
 			onClearContextFiles={clearAiContextFiles}
+			resolveContextSnippet={resolveContextSnippet}
 			onInsertToActiveNote={handleInsertToActiveNote}
 			onCreateNewNote={handleCreateNewNote}
 			tools={({ pending }) => (

@@ -75,6 +75,7 @@ export type ChatProps = UseChatOptions & {
 	onAddContextFile?: (file: AttachedContextFile) => void
 	onRemoveContextFile?: (path: string) => void
 	onClearContextFiles?: () => void
+	resolveContextSnippet?: () => Promise<string | null>
 	onInsertToActiveNote?: (content: string) => void | Promise<void>
 	onCreateNewNote?: (content: string) => void | Promise<void>
 }
@@ -159,6 +160,7 @@ export function Chat({
 	onAddContextFile,
 	onRemoveContextFile,
 	onClearContextFiles,
+	resolveContextSnippet,
 	onInsertToActiveNote,
 	onCreateNewNote,
 	...useChatOptions
@@ -197,20 +199,31 @@ export function Chat({
 						}))
 					: undefined
 
+			const contextSnippet = resolveContextSnippet
+				? await resolveContextSnippet()
+				: undefined
+
 			await onSend({
 				text: message.text,
 				files: filesPayload,
+				contextSnippet: contextSnippet ?? undefined,
 			})
 		},
-		[onSend],
+		[onSend, resolveContextSnippet],
 	)
 
 	const handleQuickPrompt = useCallback(
-		(promptText: string) => {
+		async (promptText: string) => {
 			if (pending) return
-			void onSend({ text: promptText })
+			const contextSnippet = resolveContextSnippet
+				? await resolveContextSnippet()
+				: undefined
+			void onSend({
+				text: promptText,
+				contextSnippet: contextSnippet ?? undefined,
+			})
 		},
-		[onSend, pending],
+		[onSend, pending, resolveContextSnippet],
 	)
 
 	const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -258,6 +271,14 @@ export function Chat({
 			: typeof tools === "function"
 				? tools({ error, pending })
 				: tools
+
+	const contextCount = attachedContextFiles.length
+	const contextTargetLabel =
+		contextCount > 0
+			? `选定的 ${contextCount} 篇笔记`
+			: activeDocumentName
+				? `当前笔记 (${activeDocumentName})`
+				: "当前笔记"
 
 	return (
 		<section
@@ -309,14 +330,16 @@ export function Chat({
 										type="button"
 										onClick={() =>
 											handleQuickPrompt(
-												"请帮我深度总结当前关联笔记的核心要点与关键结论。",
+												`请帮我深度总结${contextTargetLabel}的核心要点、结构逻辑与关键结论。`,
 											)
 										}
 										className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-card hover:bg-accent/60 transition-colors text-xs text-foreground/90 group"
 									>
 										<IconFileDescription className="size-4 text-blue-500 shrink-0" />
 										<div className="flex flex-col">
-											<span className="font-medium">📝 总结当前笔记</span>
+											<span className="font-medium">
+												📝 总结{contextTargetLabel}
+											</span>
 											<span className="text-[10px] text-muted-foreground">
 												提炼核心要点与脉络
 											</span>
@@ -327,7 +350,7 @@ export function Chat({
 										type="button"
 										onClick={() =>
 											handleQuickPrompt(
-												"请分析当前笔记中的待办行动项，整理成清晰规范的 Markdown Todo 清单。",
+												`请分析${contextTargetLabel}中的所有待办行动项与待解决问题，整理成清晰规范的 Markdown Todo 清单。`,
 											)
 										}
 										className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-card hover:bg-accent/60 transition-colors text-xs text-foreground/90 group"
@@ -345,7 +368,7 @@ export function Chat({
 										type="button"
 										onClick={() =>
 											handleQuickPrompt(
-												"请帮我润色当前笔记的语言表达，修正语病，并提升排版呼吸感与结构清晰度。",
+												`请帮我润色${contextTargetLabel}的语言表达，修正错别字与语病，并优化段落结构与排版呼吸感。`,
 											)
 										}
 										className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-card hover:bg-accent/60 transition-colors text-xs text-foreground/90 group"
