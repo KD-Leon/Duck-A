@@ -78,8 +78,6 @@ export type NoteMentionItem = {
 	name: string
 }
 
-export type ChatMode = "quick" | "agent"
-
 export type ChatProps = UseChatOptions & {
 	tools?: ReactNode | ((props: ChatToolsRenderProps) => ReactNode)
 	className?: string
@@ -89,8 +87,6 @@ export type ChatProps = UseChatOptions & {
 	activeDocumentName?: string | null
 	attachedContextFiles?: AttachedContextFile[]
 	availableNotes?: NoteMentionItem[]
-	chatMode?: ChatMode
-	onChatModeChange?: (mode: ChatMode) => void
 	onAddContextFile?: (file: AttachedContextFile) => void
 	onRemoveContextFile?: (path: string) => void
 	onClearContextFiles?: () => void
@@ -198,8 +194,6 @@ export function Chat({
 	activeDocumentName,
 	attachedContextFiles = [],
 	availableNotes = [],
-	chatMode = "quick",
-	onChatModeChange,
 	onAddContextFile,
 	onRemoveContextFile,
 	onClearContextFiles,
@@ -211,12 +205,6 @@ export function Chat({
 	...useChatOptions
 }: ChatProps) {
 	const { enabled = true } = useChatOptions
-	const [internalMode, setInternalMode] = useState<ChatMode>(chatMode)
-	const currentMode = onChatModeChange ? chatMode : internalMode
-	const handleModeChange = (mode: ChatMode) => {
-		setInternalMode(mode)
-		onChatModeChange?.(mode)
-	}
 
 	const {
 		messages,
@@ -318,21 +306,14 @@ export function Chat({
 	const submitDisabled = pending || !enabled
 
 	const newChatText = labels?.newChat ?? "新对话"
-	const noMessagesText =
-		currentMode === "agent"
-			? "🛠️ 智能体模式已就绪"
-			: (labels?.noMessages ?? "智能助手已就绪")
+	const noMessagesText = labels?.noMessages ?? "AI 智能助手已就绪"
 	const startConversationText =
-		currentMode === "agent"
-			? "智能体将自主探索工作区笔记、检索知识、多步执行并为您规划"
-			: (labels?.startConversation ??
-				"随时向 AI 助手提问、总结笔记或执行多步任务")
+		labels?.startConversation ??
+		"随时向 AI 助手提问、总结笔记、输入 @ 引用上下文、输入 / 快捷指令"
 	const aiSettingsText = labels?.aiSettings ?? "AI 设置"
 	const askAssistantText =
-		currentMode === "agent"
-			? "输入指令或任务，智能体将自动规划并调用工具..."
-			: (labels?.askAssistant ??
-				"向智能体提问，输入 @ 引用笔记，输入 / 快捷指令...")
+		labels?.askAssistant ??
+		"向 AI 助手提问，输入 @ 引用笔记，输入 / 快捷指令..."
 	const attachImageText = labels?.attachImage ?? "附加图片"
 
 	const handleSubmit = useCallback(
@@ -449,36 +430,15 @@ export function Chat({
 				className,
 			)}
 		>
-			{/* Top Header: Dual Modes, History & Actions */}
-			<div className="flex shrink-0 items-center justify-between border-b border-border/40 px-2 py-1.5 gap-1.5">
-				{/* Mode Switcher Tabs */}
-				<div className="inline-flex items-center rounded-lg bg-muted/60 p-0.5 border border-border/40">
-					<button
-						type="button"
-						onClick={() => handleModeChange("quick")}
-						className={cn(
-							"inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all",
-							currentMode === "quick"
-								? "bg-background text-foreground shadow-2xs"
-								: "text-muted-foreground hover:text-foreground",
-						)}
-					>
-						<IconBolt className="size-3 text-amber-500" />
-						<span>快速问答</span>
-					</button>
-					<button
-						type="button"
-						onClick={() => handleModeChange("agent")}
-						className={cn(
-							"inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-all",
-							currentMode === "agent"
-								? "bg-background text-purple-600 dark:text-purple-300 shadow-2xs font-semibold"
-								: "text-muted-foreground hover:text-foreground",
-						)}
-					>
-						<IconRobot className="size-3 text-purple-500" />
-						<span>智能体</span>
-					</button>
+			{/* Top Header: Unified Assistant Title & Actions */}
+			<div className="flex shrink-0 items-center justify-between border-b border-border/40 px-2.5 py-2 gap-1.5">
+				<div className="flex items-center gap-1.5 min-w-0">
+					<div className="size-5 rounded-md bg-purple-500/10 flex items-center justify-center text-purple-600 dark:text-purple-400">
+						<IconSparkles className="size-3.5" />
+					</div>
+					<span className="text-xs font-semibold text-foreground tracking-tight truncate">
+						AI 助手
+					</span>
 				</div>
 
 				<div className="flex items-center gap-0.5">
@@ -599,11 +559,7 @@ export function Chat({
 					{messages.length === 0 ? (
 						<ConversationEmptyState
 							icon={
-								currentMode === "agent" ? (
-									<IconRobot className="size-8 text-purple-500 opacity-90 animate-pulse" />
-								) : (
-									<IconSparkles className="size-8 text-purple-500 opacity-80" />
-								)
+								<IconSparkles className="size-8 text-purple-500 opacity-90" />
 							}
 							title={noMessagesText}
 							description={startConversationText}
