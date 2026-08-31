@@ -233,6 +233,7 @@ export interface Translations {
 		revealInExplorer: string
 		revealInFileManager: string
 		openInNewTab: string
+		addToAiContext: string
 		saveAsTemplate: string
 		templateSaved: string
 		templateFailed: string

@@ -59,6 +59,11 @@ export type ChatLabels = {
 	thoughtProcess?: string
 }
 
+export type AttachedContextFile = {
+	path: string
+	name: string
+}
+
 export type ChatProps = UseChatOptions & {
 	tools?: ReactNode | ((props: ChatToolsRenderProps) => ReactNode)
 	className?: string
@@ -66,6 +71,10 @@ export type ChatProps = UseChatOptions & {
 	labels?: ChatLabels
 	supportsVision?: boolean
 	activeDocumentName?: string | null
+	attachedContextFiles?: AttachedContextFile[]
+	onAddContextFile?: (file: AttachedContextFile) => void
+	onRemoveContextFile?: (path: string) => void
+	onClearContextFiles?: () => void
 	onInsertToActiveNote?: (content: string) => void | Promise<void>
 	onCreateNewNote?: (content: string) => void | Promise<void>
 }
@@ -146,6 +155,10 @@ export function Chat({
 	labels,
 	supportsVision = true,
 	activeDocumentName,
+	attachedContextFiles = [],
+	onAddContextFile,
+	onRemoveContextFile,
+	onClearContextFiles,
 	onInsertToActiveNote,
 	onCreateNewNote,
 	...useChatOptions
@@ -158,6 +171,8 @@ export function Chat({
 		send: onSend,
 		startNewChat,
 	} = useChat(useChatOptions)
+
+	const [isDragOver, setIsDragOver] = useState(false)
 
 	const textInputDisabled = !enabled
 	const submitDisabled = pending || !enabled
@@ -198,6 +213,45 @@ export function Chat({
 		[onSend, pending],
 	)
 
+	const handleDragOver = useCallback((e: React.DragEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		setIsDragOver(true)
+	}, [])
+
+	const handleDragLeave = useCallback((e: React.DragEvent) => {
+		e.preventDefault()
+		e.stopPropagation()
+		setIsDragOver(false)
+	}, [])
+
+	const handleDrop = useCallback(
+		(e: React.DragEvent) => {
+			e.preventDefault()
+			e.stopPropagation()
+			setIsDragOver(false)
+
+			try {
+				const jsonStr = e.dataTransfer.getData("application/json")
+				if (jsonStr) {
+					const data = JSON.parse(jsonStr)
+					if (data?.type === "note-file" && data.path && data.name) {
+						onAddContextFile?.({ path: data.path, name: data.name })
+						return
+					}
+				}
+				const textPath = e.dataTransfer.getData("text/plain")
+				if (textPath?.endsWith(".md")) {
+					const name = textPath.split("/").pop() ?? textPath
+					onAddContextFile?.({ path: textPath, name })
+				}
+			} catch {
+				// ignore parse error
+			}
+		},
+		[onAddContextFile],
+	)
+
 	const toolsContent =
 		tools === undefined
 			? undefined
@@ -223,7 +277,11 @@ export function Chat({
 						{newChatText}
 					</Button>
 				</div>
-				{activeDocumentName && (
+				{attachedContextFiles.length > 0 ? (
+					<div className="flex items-center gap-1 text-[11px] text-purple-600 dark:text-purple-300 font-medium">
+						<span>📎 已指定 {attachedContextFiles.length} 篇上下文</span>
+					</div>
+				) : activeDocumentName ? (
 					<div
 						className="flex items-center gap-1 max-w-[170px] truncate rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground font-mono"
 						title={`当前关联笔记: ${activeDocumentName}`}
@@ -231,7 +289,7 @@ export function Chat({
 						<IconFileText className="size-3 shrink-0 text-primary/70" />
 						<span className="truncate">{activeDocumentName}</span>
 					</div>
-				)}
+				) : null}
 			</div>
 
 			<Conversation className="min-h-0 flex-1">
@@ -251,7 +309,7 @@ export function Chat({
 										type="button"
 										onClick={() =>
 											handleQuickPrompt(
-												"请帮我深度总结当前活动笔记的核心要点与关键结论。",
+												"请帮我深度总结当前关联笔记的核心要点与关键结论。",
 											)
 										}
 										className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-card hover:bg-accent/60 transition-colors text-xs text-foreground/90 group"
@@ -393,12 +451,73 @@ export function Chat({
 				</ConversationContent>
 			</Conversation>
 
-			<div className="p-2">
+			<div
+				className={cn(
+					"relative p-2 transition-all",
+					isDragOver && "scale-[1.01]",
+				)}
+				onDragOver={handleDragOver}
+				onDragLeave={handleDragLeave}
+				onDrop={handleDrop}
+			>
+				{isDragOver && (
+					<div className="absolute inset-2 z-50 flex items-center justify-center rounded-lg border-2 border-dashed border-purple-500 bg-purple-500/10 backdrop-blur-xs text-xs font-medium text-purple-600 dark:text-purple-300 pointer-events-none">
+						📥 松开以将此笔记添加到 AI 对话上下文
+					</div>
+				)}
+
 				<PromptInput
 					accept={supportsVision ? "image/*" : undefined}
 					onSubmit={handleSubmit}
 				>
 					<PromptInputHeader>
+						{/* Context Capsules Bar */}
+						{attachedContextFiles.length > 0 ? (
+							<div className="flex flex-wrap items-center gap-1.5 px-3 pt-2">
+								{attachedContextFiles.map((file) => (
+									<div
+										key={file.path}
+										className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-[11px] font-mono shadow-2xs group"
+										title={file.path}
+									>
+										<IconFileText className="size-3 shrink-0" />
+										<span className="truncate max-w-[130px]">{file.name}</span>
+										<button
+											type="button"
+											onClick={() => onRemoveContextFile?.(file.path)}
+											className="size-3.5 rounded-full inline-flex items-center justify-center hover:bg-purple-500/20 text-purple-600 dark:text-purple-300"
+											title="移除此上下文"
+										>
+											<IconX className="size-2.5" />
+										</button>
+									</div>
+								))}
+								{onClearContextFiles && (
+									<button
+										type="button"
+										onClick={onClearContextFiles}
+										className="text-[10px] text-muted-foreground hover:text-foreground underline ml-0.5"
+									>
+										清空
+									</button>
+								)}
+							</div>
+						) : activeDocumentName ? (
+							<div className="flex items-center gap-1 px-3 pt-2">
+								<div
+									className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/80 border border-border/60 text-[11px] font-mono text-muted-foreground"
+									title="当前活动笔记（自动同步为上下文）"
+								>
+									<IconFileText className="size-3 shrink-0 text-primary/70" />
+									<span className="truncate max-w-[160px]">
+										{activeDocumentName}
+									</span>
+									<span className="text-[9px] px-1 py-0.2 rounded bg-primary/10 text-primary font-sans font-medium">
+										当前
+									</span>
+								</div>
+							</div>
+						) : null}
 						<AttachmentsPreview />
 					</PromptInputHeader>
 					<PromptInputTextarea

@@ -75,6 +75,10 @@ export type UISlice = {
 	isChatPanelOpen: boolean
 	setChatPanelOpen: (isOpen: boolean) => void
 	toggleChatPanelOpen: () => void
+	aiContextFiles: Array<{ path: string; name: string }>
+	addAiContextFile: (file: { path: string; name: string }) => void
+	removeAiContextFile: (path: string) => void
+	clearAiContextFiles: () => void
 }
 
 export type UISliceDependencies = {
@@ -220,4 +224,20 @@ export const prepareUISlice =
 
 				return { isChatPanelOpen: !state.isChatPanelOpen }
 			}),
+		aiContextFiles: [],
+		addAiContextFile: (file) =>
+			set((state) => {
+				if (state.aiContextFiles.some((f) => f.path === file.path)) {
+					return { isChatPanelOpen: true }
+				}
+				return {
+					aiContextFiles: [...state.aiContextFiles, file],
+					isChatPanelOpen: true,
+				}
+			}),
+		removeAiContextFile: (path) =>
+			set((state) => ({
+				aiContextFiles: state.aiContextFiles.filter((f) => f.path !== path),
+			})),
+		clearAiContextFiles: () => set({ aiContextFiles: [] }),
 	})

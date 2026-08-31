@@ -264,6 +264,7 @@ export const en: Translations = {
 		revealInExplorer: "Reveal in File Explorer",
 		revealInFileManager: "Reveal in File Manager",
 		openInNewTab: "Open in New Tab",
+		addToAiContext: "Add to AI Context",
 		saveAsTemplate: "Save as Template",
 		templateSaved: "Template saved successfully: {name}",
 		templateFailed: "Failed to save template",

@@ -168,6 +168,11 @@ function ChatPanelContent() {
 
 	const activeTabPath = useStore((state) => state.getActiveTabPath())
 	const workspacePath = useStore((state) => state.workspacePath)
+	const aiContextFiles = useStore((state) => state.aiContextFiles)
+	const addAiContextFile = useStore((state) => state.addAiContextFile)
+	const removeAiContextFile = useStore((state) => state.removeAiContextFile)
+	const clearAiContextFiles = useStore((state) => state.clearAiContextFiles)
+
 	const activeDocumentName = useMemo(() => {
 		if (!activeTabPath) return null
 		return activeTabPath.split("/").pop() ?? activeTabPath
@@ -217,6 +222,10 @@ function ChatPanelContent() {
 			systemPrompt={systemPrompt || undefined}
 			labels={t.chat}
 			activeDocumentName={activeDocumentName}
+			attachedContextFiles={aiContextFiles}
+			onAddContextFile={addAiContextFile}
+			onRemoveContextFile={removeAiContextFile}
+			onClearContextFiles={clearAiContextFiles}
 			onInsertToActiveNote={handleInsertToActiveNote}
 			onCreateNewNote={handleCreateNewNote}
 			tools={({ pending }) => (

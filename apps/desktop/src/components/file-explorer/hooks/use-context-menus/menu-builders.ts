@@ -18,7 +18,7 @@ import {
 	saveNoteAsTemplate,
 } from "@/components/file-explorer/utils/template-utils"
 import { getTranslation } from "@/i18n"
-import type { WorkspaceEntry } from "@/store"
+import { useStore, type WorkspaceEntry } from "@/store"
 import { isImageFile } from "@/utils/file-icon"
 
 const REVEAL_ACCELERATOR = "CmdOrCtrl+Alt+R"
@@ -143,6 +143,17 @@ export const showEntryContextMenu = async ({
 					text: t.contextMenu.openInNewTab,
 					action: async () => {
 						await openTabInNewTab(entry.path)
+					},
+				}),
+				MenuItem.new({
+					id: `add-to-ai-context-${entry.path}`,
+					text: t.contextMenu.addToAiContext,
+					action: async () => {
+						useStore.getState().addAiContextFile({
+							path: entry.path,
+							name: entry.name,
+						})
+						toast.success(`已添加「${entry.name}」到 AI 上下文`)
 					},
 				}),
 				MenuItem.new({

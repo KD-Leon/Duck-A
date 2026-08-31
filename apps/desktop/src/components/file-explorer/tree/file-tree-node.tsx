@@ -78,6 +78,18 @@ export function FileTreeNode({
 				ref={setDraggableRef}
 				type="button"
 				id={entry.path}
+				draggable={!isRenaming && isMarkdown}
+				onDragStart={(e) => {
+					e.dataTransfer.setData("text/plain", entry.path)
+					e.dataTransfer.setData(
+						"application/json",
+						JSON.stringify({
+							type: "note-file",
+							path: entry.path,
+							name: entry.name,
+						}),
+					)
+				}}
 				onClick={handlePrimaryAction}
 				onContextMenu={handleContextMenu}
 				className={cn(

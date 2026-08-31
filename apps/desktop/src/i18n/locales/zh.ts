@@ -258,6 +258,7 @@ export const zh: Translations = {
 		revealInExplorer: "在资源管理器中显示",
 		revealInFileManager: "在文件管理器中显示",
 		openInNewTab: "在新标签页打开",
+		addToAiContext: "添加到 AI 对话上下文",
 		saveAsTemplate: "保存为模板",
 		templateSaved: "模板保存成功：{name}",
 		templateFailed: "保存模板失败",
