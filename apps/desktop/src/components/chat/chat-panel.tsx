@@ -311,6 +311,30 @@ function ChatPanelContent() {
 		[openTab, workspacePath],
 	)
 
+	const handleExportChat = useCallback(
+		async (markdown: string, title: string) => {
+			if (!workspacePath) {
+				toast.error("未打开工作区，无法导出笔记")
+				return
+			}
+			try {
+				const safeTitle =
+					title.replace(/[/\\?%*:|"<>]/g, "-").trim() || "AI-Chat"
+				const dateStr = new Date().toISOString().slice(0, 10)
+				const fileName = `AI-Chat-${safeTitle.slice(0, 15)}-${dateStr}.md`
+				const filePath = `${workspacePath}/${fileName}`
+				await writeTextFile(filePath, markdown)
+				await useStore.getState().refreshWorkspaceEntries()
+				await openTab(filePath)
+				toast.success(`已成功将完整会话导出为笔记: ${fileName}`)
+			} catch (err) {
+				console.error("Failed to export chat", err)
+				toast.error("导出笔记失败")
+			}
+		},
+		[openTab, workspacePath],
+	)
+
 	return (
 		<Chat
 			id="desktop-chat"
@@ -334,6 +358,7 @@ function ChatPanelContent() {
 			onInsertAtCursor={handleInsertAtCursor}
 			onInsertToActiveNote={handleInsertToActiveNote}
 			onCreateNewNote={handleCreateNewNote}
+			onExportChat={handleExportChat}
 			tools={({ pending }) => (
 				<Select
 					disabled={pending || enabledChatModels.length === 0}

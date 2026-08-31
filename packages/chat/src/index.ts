@@ -12,6 +12,8 @@ export {
 } from "./panel-chat-tools"
 export {
 	type ChatRuntimeConfig,
+	type ChatSession,
+	exportChatMessagesToMarkdown,
 	type UseChatOptions,
 	type UseChatResult,
 	useChat,

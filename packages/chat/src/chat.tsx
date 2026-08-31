@@ -2,21 +2,27 @@ import { Button } from "@mdit/ui/components/button"
 import { cn } from "@mdit/ui/lib/utils"
 import {
 	IconBolt,
+	IconBug,
+	IconBulb,
 	IconCheck,
 	IconCopy,
 	IconCursorText,
+	IconDownload,
 	IconFileDescription,
 	IconFilePlus,
 	IconFileText,
+	IconHistory,
 	IconListCheck,
 	IconPaperclip,
 	IconPencil,
 	IconRobot,
 	IconSparkles,
+	IconTable,
+	IconTrash,
 	IconX,
 } from "@tabler/icons-react"
 import type { ReactNode } from "react"
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import {
 	Conversation,
@@ -36,7 +42,7 @@ import {
 	usePromptInputAttachments,
 } from "./ui/prompt-input"
 import { ThinkingBlock } from "./ui/thinking-block"
-import { type UseChatOptions, useChat } from "./use-chat"
+import { type ChatSession, type UseChatOptions, useChat } from "./use-chat"
 
 export type ChatMessage = {
 	id: string
@@ -92,6 +98,26 @@ export type ChatProps = UseChatOptions & {
 	onInsertAtCursor?: (content: string) => void | Promise<void>
 	onInsertToActiveNote?: (content: string) => void | Promise<void>
 	onCreateNewNote?: (content: string) => void | Promise<void>
+	onExportChat?: (markdown: string, title: string) => void | Promise<void>
+}
+
+const CHAT_SESSIONS_STORAGE_KEY = "mdit_ai_chat_sessions_v1"
+
+function loadStoredSessions(): ChatSession[] {
+	try {
+		const raw = localStorage.getItem(CHAT_SESSIONS_STORAGE_KEY)
+		return raw ? JSON.parse(raw) : []
+	} catch {
+		return []
+	}
+}
+
+function saveStoredSessions(sessions: ChatSession[]) {
+	try {
+		localStorage.setItem(CHAT_SESSIONS_STORAGE_KEY, JSON.stringify(sessions))
+	} catch {
+		// ignore
+	}
 }
 
 function AttachmentsPreview() {
@@ -181,6 +207,7 @@ export function Chat({
 	onInsertAtCursor,
 	onInsertToActiveNote,
 	onCreateNewNote,
+	onExportChat,
 	...useChatOptions
 }: ChatProps) {
 	const { enabled = true } = useChatOptions
@@ -197,12 +224,95 @@ export function Chat({
 		error,
 		send: onSend,
 		startNewChat,
+		setSessionMessages,
+		exportMarkdown,
+		sessionId,
 	} = useChat(useChatOptions)
 
 	const [isDragOver, setIsDragOver] = useState(false)
 	const [showSlashMenu, setShowSlashMenu] = useState(false)
 	const [showMentionMenu, setShowMentionMenu] = useState(false)
+	const [showHistoryDrawer, setShowHistoryDrawer] = useState(false)
 	const [mentionSearch, setMentionSearch] = useState("")
+	const [sessions, setSessions] = useState<ChatSession[]>(() =>
+		loadStoredSessions(),
+	)
+
+	// Auto-persist active session
+	useEffect(() => {
+		if (messages.length === 0) return
+		setSessions((prev) => {
+			const firstUserMsg =
+				messages.find((m) => m.role === "user")?.content ?? "新对话"
+			const sessionTitle =
+				firstUserMsg.length > 25
+					? `${firstUserMsg.slice(0, 25)}...`
+					: firstUserMsg
+			const now = Date.now()
+
+			const existingIdx = prev.findIndex((s) => s.id === sessionId)
+			let next: ChatSession[]
+			if (existingIdx >= 0) {
+				next = prev.map((s, idx) =>
+					idx === existingIdx
+						? { ...s, title: sessionTitle, updatedAt: now, messages }
+						: s,
+				)
+			} else {
+				next = [
+					{
+						id: sessionId,
+						title: sessionTitle,
+						createdAt: now,
+						updatedAt: now,
+						messages,
+					},
+					...prev,
+				]
+			}
+			saveStoredSessions(next)
+			return next
+		})
+	}, [messages, sessionId])
+
+	const handleSelectSession = useCallback(
+		(session: ChatSession) => {
+			setSessionMessages(session.messages, session.id)
+			setShowHistoryDrawer(false)
+		},
+		[setSessionMessages],
+	)
+
+	const handleDeleteSession = useCallback(
+		(idToDelete: string, e: React.MouseEvent) => {
+			e.stopPropagation()
+			setSessions((prev) => {
+				const next = prev.filter((s) => s.id !== idToDelete)
+				saveStoredSessions(next)
+				return next
+			})
+		},
+		[],
+	)
+
+	const handleClearAllSessions = useCallback(() => {
+		setSessions([])
+		saveStoredSessions([])
+	}, [])
+
+	const handleExportCurrentChat = useCallback(async () => {
+		if (messages.length === 0) return
+		const firstUserMsg =
+			messages.find((m) => m.role === "user")?.content ?? "知识库对话"
+		const title =
+			firstUserMsg.length > 20 ? `${firstUserMsg.slice(0, 20)}` : firstUserMsg
+		const md = exportMarkdown(title)
+		if (onExportChat) {
+			await onExportChat(md, title)
+		} else if (onCreateNewNote) {
+			await onCreateNewNote(md)
+		}
+	}, [exportMarkdown, messages, onCreateNewNote, onExportChat])
 
 	const textInputDisabled = !enabled
 	const submitDisabled = pending || !enabled
@@ -334,9 +444,12 @@ export function Chat({
 
 	return (
 		<section
-			className={cn("flex h-full min-h-0 flex-col bg-background/50", className)}
+			className={cn(
+				"relative flex h-full min-h-0 flex-col bg-background/50",
+				className,
+			)}
 		>
-			{/* Top Header: Dual Modes & Actions */}
+			{/* Top Header: Dual Modes, History & Actions */}
 			<div className="flex shrink-0 items-center justify-between border-b border-border/40 px-2 py-1.5 gap-1.5">
 				{/* Mode Switcher Tabs */}
 				<div className="inline-flex items-center rounded-lg bg-muted/60 p-0.5 border border-border/40">
@@ -368,13 +481,39 @@ export function Chat({
 					</button>
 				</div>
 
-				<div className="flex items-center gap-1">
+				<div className="flex items-center gap-0.5">
+					{/* History Sessions Drawer Toggle */}
+					<Button
+						onClick={() => setShowHistoryDrawer((prev) => !prev)}
+						size="sm"
+						type="button"
+						variant="ghost"
+						className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md"
+						title="查看会话历史记录"
+					>
+						<IconHistory className="size-3.5 text-muted-foreground" />
+					</Button>
+
+					{/* Export Chat as Note */}
+					{messages.length > 0 && (
+						<Button
+							onClick={handleExportCurrentChat}
+							size="sm"
+							type="button"
+							variant="ghost"
+							className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md"
+							title="将当前完整会话导出为知识库笔记"
+						>
+							<IconDownload className="size-3.5 text-purple-500" />
+						</Button>
+					)}
+
 					<Button
 						onClick={startNewChat}
 						size="sm"
 						type="button"
 						variant="ghost"
-						className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md"
+						className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md"
 						title="开启全新会话"
 					>
 						<IconSparkles className="size-3 mr-1 text-purple-500" />
@@ -382,6 +521,78 @@ export function Chat({
 					</Button>
 				</div>
 			</div>
+
+			{/* History Sessions Drawer Overlay */}
+			{showHistoryDrawer && (
+				<div className="absolute inset-x-0 top-[37px] bottom-0 z-50 bg-background/95 backdrop-blur-md flex flex-col border-b border-border/50 p-2 animate-in fade-in slide-in-from-top-2 duration-150">
+					<div className="flex items-center justify-between px-2 py-1 border-b border-border/40 mb-2">
+						<div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+							<IconHistory className="size-3.5 text-purple-500" />
+							<span>会话历史记录 ({sessions.length})</span>
+						</div>
+						<div className="flex items-center gap-2">
+							{sessions.length > 0 && (
+								<button
+									type="button"
+									onClick={handleClearAllSessions}
+									className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+								>
+									清空全部
+								</button>
+							)}
+							<button
+								type="button"
+								onClick={() => setShowHistoryDrawer(false)}
+								className="text-muted-foreground hover:text-foreground"
+							>
+								<IconX className="size-3.5" />
+							</button>
+						</div>
+					</div>
+
+					<div className="flex-1 overflow-y-auto space-y-1 pr-1">
+						{sessions.length === 0 ? (
+							<div className="h-full flex flex-col items-center justify-center text-center text-xs text-muted-foreground p-6">
+								<IconHistory className="size-8 opacity-40 mb-2" />
+								<span>暂无历史会话记录</span>
+							</div>
+						) : (
+							sessions.map((item) => (
+								<div
+									key={item.id}
+									onClick={() => handleSelectSession(item)}
+									className={cn(
+										"group flex items-center justify-between p-2 rounded-lg border border-border/40 hover:bg-accent/70 cursor-pointer transition-all text-xs",
+										item.id === sessionId &&
+											"bg-purple-500/10 border-purple-500/30",
+									)}
+								>
+									<div className="flex flex-col min-w-0 pr-2">
+										<span className="font-medium text-foreground truncate">
+											{item.title}
+										</span>
+										<span className="text-[10px] text-muted-foreground">
+											{new Date(item.updatedAt).toLocaleTimeString([], {
+												hour: "2-digit",
+												minute: "2-digit",
+											})}{" "}
+											· {item.messages.length} 条消息
+										</span>
+									</div>
+									<button
+										type="button"
+										onClick={(e) => handleDeleteSession(item.id, e)}
+										className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive transition-opacity"
+										title="删除此会话"
+									>
+										<IconTrash className="size-3" />
+									</button>
+								</div>
+							))
+						)}
+					</div>
+				</div>
+			)}
 
 			<Conversation className="min-h-0 flex-1">
 				<ConversationContent className="h-full">
@@ -596,80 +807,136 @@ export function Chat({
 								type="button"
 								onClick={() =>
 									handleQuickPrompt(
-										`请帮我深度总结${contextTargetLabel}的核心要点与结论。`,
+										`请帮我深度总结${contextTargetLabel}的核心要点与关键结论。`,
 									)
 								}
 								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
 							>
+								<IconFileDescription className="size-3.5 text-purple-500 shrink-0" />
 								<span className="font-mono text-purple-500 font-bold">
 									/summary
 								</span>
 								<span className="text-muted-foreground text-[11px]">
-									总结当前笔记/选区要点
+									总结核心要点与脉络
 								</span>
 							</button>
 							<button
 								type="button"
 								onClick={() =>
 									handleQuickPrompt(
-										`请提取${contextTargetLabel}中的所有行动项，整理成 Markdown Todo 清单。`,
+										`请提取${contextTargetLabel}中的所有行动项与任务，整理成清晰规范的 Markdown Todo 清单。`,
 									)
 								}
 								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
 							>
+								<IconListCheck className="size-3.5 text-emerald-500 shrink-0" />
 								<span className="font-mono text-emerald-500 font-bold">
 									/todo
 								</span>
 								<span className="text-muted-foreground text-[11px]">
-									提取待办与行动项
+									提取待办与行动清单
 								</span>
 							</button>
 							<button
 								type="button"
 								onClick={() =>
 									handleQuickPrompt(
-										`请帮我润色优化${contextTargetLabel}的语言表达与段落结构。`,
+										`请帮我润色优化${contextTargetLabel}的文字表达，修正错别字与语病，并提升排版呼吸感。`,
 									)
 								}
 								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
 							>
+								<IconPencil className="size-3.5 text-amber-500 shrink-0" />
 								<span className="font-mono text-amber-500 font-bold">
 									/polish
 								</span>
 								<span className="text-muted-foreground text-[11px]">
-									润色与结构优化
+									润色与排版优化
 								</span>
 							</button>
 							<button
 								type="button"
 								onClick={() =>
 									handleQuickPrompt(
-										`请用通俗易懂的语言深度解析${contextTargetLabel}的核心概念与背景。`,
+										`基于${contextTargetLabel}的主题，为我展开头脑风暴，提供 5 个以上极具创意与可行性的延伸方案。`,
 									)
 								}
 								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
 							>
+								<IconBulb className="size-3.5 text-yellow-500 shrink-0" />
+								<span className="font-mono text-yellow-500 font-bold">
+									/brainstorm
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									头脑风暴与创意延伸
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请用通俗易懂的语言深度解析${contextTargetLabel}的核心概念、底层原理与背景。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<IconRobot className="size-3.5 text-blue-500 shrink-0" />
 								<span className="font-mono text-blue-500 font-bold">
 									/explain
 								</span>
 								<span className="text-muted-foreground text-[11px]">
-									深度解析核心概念
+									通俗深度原理解析
 								</span>
 							</button>
 							<button
 								type="button"
 								onClick={() =>
 									handleQuickPrompt(
-										`请将${contextTargetLabel}的内容进行高水平专业中英文互译。`,
+										`请将${contextTargetLabel}的内容进行高水平专业中英文互译，保持行业术语准确与优雅流畅。`,
 									)
 								}
 								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
 							>
+								<IconBolt className="size-3.5 text-cyan-500 shrink-0" />
 								<span className="font-mono text-cyan-500 font-bold">
 									/translate
 								</span>
 								<span className="text-muted-foreground text-[11px]">
-									专业中英互译
+									专业高水准互译
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请对${contextTargetLabel}中的代码或技术方案进行严格 Code Review，指出潜在 Bug 与性能优化建议。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<IconBug className="size-3.5 text-rose-500 shrink-0" />
+								<span className="font-mono text-rose-500 font-bold">
+									/codereview
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									代码审查与缺陷纠错
+								</span>
+							</button>
+							<button
+								type="button"
+								onClick={() =>
+									handleQuickPrompt(
+										`请从${contextTargetLabel}中提取核心对比维度或结构化数据，整理成 Markdown 表格展示。`,
+									)
+								}
+								className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent text-xs text-foreground/90 text-left transition-colors"
+							>
+								<IconTable className="size-3.5 text-indigo-500 shrink-0" />
+								<span className="font-mono text-indigo-500 font-bold">
+									/table
+								</span>
+								<span className="text-muted-foreground text-[11px]">
+									提取结构化表格
 								</span>
 							</button>
 						</div>

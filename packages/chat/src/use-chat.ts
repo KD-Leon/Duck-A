@@ -47,6 +47,14 @@ export type SendMessagePayload =
 			referencedFiles?: string[]
 	  }
 
+export type ChatSession = {
+	id: string
+	title: string
+	createdAt: number
+	updatedAt: number
+	messages: ChatMessage[]
+}
+
 export type UseChatResult = {
 	messages: ChatMessage[]
 	pending: boolean
@@ -54,6 +62,29 @@ export type UseChatResult = {
 	send: (payload: SendMessagePayload) => Promise<void>
 	stop: () => void
 	startNewChat: () => void
+	setSessionMessages: (
+		newMessages: ChatMessage[],
+		newSessionId?: string,
+	) => void
+	exportMarkdown: (title?: string) => string
+	sessionId: string
+}
+
+export function exportChatMessagesToMarkdown(
+	messages: ChatMessage[],
+	title?: string,
+): string {
+	const header = `# 💬 AI 对话记录: ${title ?? "知识库会话"}\n> 📅 导出时间: ${new Date().toLocaleString()}\n\n---\n\n`
+	const body = messages
+		.map((msg) => {
+			const roleTitle = msg.role === "user" ? "### 👤 用户" : "### 🤖 智能体"
+			const thinking = msg.reasoning
+				? `> 💭 **思考过程**:\n> ${msg.reasoning.split("\n").join("\n> ")}\n\n`
+				: ""
+			return `${roleTitle}\n\n${thinking}${msg.content}`
+		})
+		.join("\n\n---\n\n")
+	return header + body
 }
 
 function parseMessageContent(message: UIMessage): {
@@ -237,6 +268,7 @@ export function useChat(options: UseChatOptions): UseChatResult {
 			onError?.(error)
 		},
 	})
+
 	const isPending = chat.status === "submitted" || chat.status === "streaming"
 
 	const messages = useMemo<ChatMessage[]>(
@@ -290,6 +322,35 @@ export function useChat(options: UseChatOptions): UseChatResult {
 		chat.clearError()
 	}, [chat])
 
+	const setSessionMessages = useCallback(
+		(newMessages: ChatMessage[], newSessionId?: string) => {
+			chat.stop()
+			if (newSessionId) {
+				sessionIdRef.current = newSessionId as any
+			}
+			const uiMsgs: UIMessage[] = newMessages.map((m) => ({
+				id: m.id,
+				role: m.role,
+				parts: [
+					...(m.reasoning
+						? [{ type: "reasoning" as const, text: m.reasoning }]
+						: []),
+					{ type: "text" as const, text: m.content },
+				],
+			}))
+			chat.setMessages(uiMsgs)
+			chat.clearError()
+		},
+		[chat],
+	)
+
+	const exportMarkdown = useCallback(
+		(title?: string) => {
+			return exportChatMessagesToMarkdown(messages, title)
+		},
+		[messages],
+	)
+
 	return {
 		error: chat.error?.message ?? null,
 		messages,
@@ -297,5 +358,8 @@ export function useChat(options: UseChatOptions): UseChatResult {
 		send,
 		stop,
 		startNewChat,
+		setSessionMessages,
+		exportMarkdown,
+		sessionId: sessionIdRef.current,
 	}
 }
