@@ -1,3 +1,4 @@
+import { CopilotKit } from "@copilotkit/react-core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { useEffect } from "react"
 import { useShallow } from "zustand/shallow"
@@ -108,23 +109,25 @@ export function App() {
 	}
 
 	return (
-		<ScreenCaptureProvider>
-			<CopilotAgentBridge />
-			<div className={`h-screen flex flex-col ${mutedBgClass}`}>
-				<div className="flex-1 overflow-hidden flex">
-					<div className="group/side flex">
-						<FileExplorer />
-						<CollectionView />
+		<CopilotKit runtimeUrl="/api/copilotkit">
+			<ScreenCaptureProvider>
+				<CopilotAgentBridge />
+				<div className={`h-screen flex flex-col ${mutedBgClass}`}>
+					<div className="flex-1 overflow-hidden flex">
+						<div className="group/side flex">
+							<FileExplorer />
+							<CollectionView />
+						</div>
+						<Editor />
+						<ChatPanel />
 					</div>
-					<Editor />
-					<ChatPanel />
 				</div>
-			</div>
-			<SettingsDialog />
-			<CommandMenu />
-			<GraphViewDialog />
-			<ImagePreviewDialog />
-			<ImageEditDialog />
-		</ScreenCaptureProvider>
+				<SettingsDialog />
+				<CommandMenu />
+				<GraphViewDialog />
+				<ImagePreviewDialog />
+				<ImageEditDialog />
+			</ScreenCaptureProvider>
+		</CopilotKit>
 	)
 }
