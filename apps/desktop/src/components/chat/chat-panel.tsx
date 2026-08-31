@@ -1,4 +1,4 @@
-import { type ChatProviderId, CODEX_BASE_URL } from "@mdit/ai"
+import { CODEX_BASE_URL } from "@mdit/ai"
 import { Chat } from "@mdit/chat"
 import {
 	Select,
@@ -16,7 +16,7 @@ import { useResizablePanel } from "@/hooks/use-resizable-panel"
 import { useTranslation } from "@/i18n"
 import { useStore } from "@/store"
 
-const toModelSelectValue = (provider: ChatProviderId, model: string): string =>
+const toModelSelectValue = (provider: string, model: string): string =>
 	`${provider}|${model}`
 
 export function ChatPanel() {
@@ -71,17 +71,26 @@ export function ChatPanel() {
 
 function ChatPanelContent() {
 	const { t } = useTranslation()
-	const { chatConfig, enabledChatModels, selectModel, openSettingsWithTab } =
-		useStore(
-			useShallow((state) => ({
-				chatConfig: state.chatConfig,
-				enabledChatModels: state.enabledChatModels,
-				selectModel: state.selectModel,
-				openSettingsWithTab: state.openSettingsWithTab,
-			})),
-		)
+	const {
+		chatConfig,
+		enabledChatModels,
+		chatHistoryRounds,
+		systemPrompt,
+		selectModel,
+		openSettingsWithTab,
+	} = useStore(
+		useShallow((state) => ({
+			chatConfig: state.chatConfig,
+			enabledChatModels: state.enabledChatModels,
+			chatHistoryRounds: state.chatHistoryRounds,
+			systemPrompt: state.systemPrompt,
+			selectModel: state.selectModel,
+			openSettingsWithTab: state.openSettingsWithTab,
+		})),
+	)
 
 	const isConfigured = Boolean(chatConfig)
+	const supportsVision = chatConfig?.vision ?? true
 
 	const resolveActiveConfig = useCallback(async () => {
 		const currentConfig = useStore.getState().chatConfig
@@ -130,7 +139,7 @@ function ChatPanelContent() {
 				return
 			}
 
-			const provider = value.slice(0, separatorIndex) as ChatProviderId
+			const provider = value.slice(0, separatorIndex)
 			const model = value.slice(separatorIndex + 1)
 			if (!model) {
 				return
@@ -157,6 +166,9 @@ function ChatPanelContent() {
 			onOpenSettings={() => openSettingsWithTab("ai")}
 			panelChatToolDeps={panelChatToolDeps}
 			resolveActiveConfig={resolveActiveConfig}
+			supportsVision={supportsVision}
+			chatHistoryRounds={chatHistoryRounds}
+			systemPrompt={systemPrompt || undefined}
 			labels={t.chat}
 			tools={({ pending }) => (
 				<Select

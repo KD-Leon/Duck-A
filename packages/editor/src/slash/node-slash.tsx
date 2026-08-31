@@ -2,26 +2,23 @@ import { AIChatPlugin } from "@platejs/ai/react"
 import { EmojiInputPlugin } from "@platejs/emoji/react"
 import {
 	CalendarIcon,
+	CheckSquare,
 	Code2,
 	FileText,
-	Heading1Icon,
-	Heading2Icon,
-	Heading3Icon,
 	ImageIcon,
 	LightbulbIcon,
-	ListIcon,
+	List,
 	ListOrdered,
 	Quote,
 	RadicalIcon,
 	SmileIcon,
 	SparklesIcon,
-	Square,
 	Table,
 	TableOfContentsIcon,
-	TypeIcon,
+	Type,
 } from "lucide-react"
 import type { NodeComponent } from "platejs"
-import { KEYS, PointApi } from "platejs"
+import { KEYS } from "platejs"
 import type { PlateEditor, PlateElementProps } from "platejs/react"
 import { PlateElement } from "platejs/react"
 import { applyPreviousCodeBlockLanguage } from "../code/code-block-language"
@@ -49,9 +46,9 @@ import {
 } from "../slash/slash-input"
 import type { SlashHostDeps } from "../slash/slash-kit-types"
 import {
-	getBlockType,
 	insertBlock,
 	insertInlineElement,
+	turnIntoBlock,
 } from "../slash/transforms"
 import { NOTE_TITLE_KEY } from "../title"
 
@@ -83,63 +80,163 @@ type Group = {
 		focusEditor?: boolean
 		keywords?: string[]
 		label?: string
+		description?: string
 	}[]
+}
+
+function HeadingIcon({ level }: { level: 1 | 2 | 3 | 4 }) {
+	const subscriptMap: Record<number, string> = {
+		1: "₁",
+		2: "₂",
+		3: "₃",
+		4: "₄",
+	}
+
+	return (
+		<span className="inline-flex items-center justify-center font-semibold text-xs leading-none select-none tracking-tighter">
+			<span>H</span>
+			<span className="text-[11px] font-bold opacity-80">
+				{subscriptMap[level]}
+			</span>
+		</span>
+	)
 }
 
 function createSlashGroups(host: SlashHostDeps): Group[] {
 	const groups: Group[] = [
 		{
-			group: "Document",
-			shouldHide: (editor) => {
-				const hasFrontmatter = editor.api.some({
-					match: { type: FRONTMATTER_KEY },
-				})
-				const currentBlock = editor.api.node({ block: true, mode: "lowest" })
-				const currentTopLevelIndex = currentBlock?.[1][0] ?? -1
-				const canInsertFrontmatter =
-					!hasFrontmatter &&
-					(currentTopLevelIndex === 1 ||
-						(currentTopLevelIndex === 0 &&
-							currentBlock?.[0].type === NOTE_TITLE_KEY))
-				return !canInsertFrontmatter
-			},
+			group: "Format",
 			items: [
 				{
-					icon: <TableOfContentsIcon />,
-					keywords: ["metadata", "yaml", "head", "front matter"],
-					label: "Frontmatter",
-					value: "frontmatter",
-					onSelect: async (editor: PlateEditor) => {
-						if (editor.api.some({ match: { type: FRONTMATTER_KEY } })) return
-
-						let defaults = createDefaultFrontmatterRows()
-						if (host.getFrontmatterDefaults) {
-							try {
-								defaults = await host.getFrontmatterDefaults()
-							} catch {
-								defaults = createDefaultFrontmatterRows()
-							}
-						}
-
-						editor.tf.replaceNodes(
-							{
-								type: FRONTMATTER_KEY,
-								data: defaults,
-								children: [{ text: "" }],
-							},
-							{ at: [1] },
-						)
-						requestFrontmatterFocus(editor.id, "firstCell")
-					},
+					icon: <Type className="size-4" />,
+					keywords: ["paragraph", "text", "p", "正文", "文本", "段落"],
+					label: "Text",
+					value: KEYS.p,
 				},
-			],
+				{
+					icon: <HeadingIcon level={1} />,
+					keywords: [
+						"h1",
+						"heading 1",
+						"title",
+						"1",
+						"#",
+						"一",
+						"一级标题",
+						"标题1",
+					],
+					label: "Heading 1",
+					value: KEYS.h1,
+				},
+				{
+					icon: <HeadingIcon level={2} />,
+					keywords: [
+						"h2",
+						"heading 2",
+						"subtitle",
+						"2",
+						"##",
+						"二",
+						"二级标题",
+						"标题2",
+					],
+					label: "Heading 2",
+					value: KEYS.h2,
+				},
+				{
+					icon: <HeadingIcon level={3} />,
+					keywords: ["h3", "heading 3", "3", "###", "三", "三级标题", "标题3"],
+					label: "Heading 3",
+					value: KEYS.h3,
+				},
+				{
+					icon: <HeadingIcon level={4} />,
+					keywords: ["h4", "heading 4", "4", "####", "四", "四级标题", "标题4"],
+					label: "Heading 4",
+					value: KEYS.h4,
+				},
+				{
+					icon: <Quote className="size-4" />,
+					keywords: ["citation", "blockquote", "quote", ">", "引用", "块引用"],
+					label: "Blockquote",
+					value: KEYS.blockquote,
+				},
+				{
+					icon: <Code2 className="size-4" />,
+					keywords: ["```", "code", "codeblock", "代码", "代码块"],
+					label: "Code Block",
+					value: KEYS.codeBlock,
+				},
+				{
+					icon: <List className="size-4" />,
+					keywords: ["unordered", "ul", "-", "*", "bullet", "列表", "无序列表"],
+					label: "Bullet List",
+					value: KEYS.ul,
+				},
+				{
+					icon: <ListOrdered className="size-4" />,
+					keywords: [
+						"ordered",
+						"ol",
+						"1",
+						"1.",
+						"number",
+						"有序列表",
+						"数字列表",
+					],
+					label: "Ordered List",
+					value: KEYS.ol,
+				},
+				{
+					icon: <CheckSquare className="size-4" />,
+					keywords: [
+						"checklist",
+						"task",
+						"checkbox",
+						"[]",
+						"[ ]",
+						"todo",
+						"待办",
+						"任务",
+					],
+					label: "To-do List",
+					value: KEYS.listTodo,
+				},
+				{
+					icon: <LightbulbIcon className="size-4" />,
+					keywords: [
+						"note",
+						"callout",
+						"obsidian",
+						"[!",
+						"tip",
+						"warning",
+						"提示",
+						"警告",
+					],
+					label: "Callout",
+					value: KEYS.callout,
+				},
+			].map((item) => ({
+				...item,
+				onSelect: (editor, value) => {
+					editor.tf.withoutNormalizing(() => {
+						turnIntoBlock(editor, value)
+						if (value === KEYS.codeBlock) {
+							applyPreviousCodeBlockLanguage(editor)
+						}
+					})
+				},
+			})),
 		},
 		{
 			group: "AI",
 			items: [
 				{
 					focusEditor: false,
-					icon: <SparklesIcon />,
+					icon: <SparklesIcon className="size-4 text-purple-500" />,
+					keywords: ["ai", "chat", "assistant", "generate", "智能", "生成"],
+					label: "AI Assistant",
 					value: "AI",
 					onSelect: (editor) => {
 						editor.getApi(AIChatPlugin).aiChat.show()
@@ -148,158 +245,90 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 			],
 		},
 		{
-			group: "Basic blocks",
+			group: "Insert",
 			items: [
 				{
-					icon: <TypeIcon />,
-					keywords: ["paragraph"],
-					label: "Text",
-					value: KEYS.p,
-				},
-				{
-					icon: <Heading1Icon />,
-					keywords: ["title", "h1"],
-					label: "Heading 1",
-					value: KEYS.h1,
-				},
-				{
-					icon: <Heading2Icon />,
-					keywords: ["subtitle", "h2"],
-					label: "Heading 2",
-					value: KEYS.h2,
-				},
-				{
-					icon: <Heading3Icon />,
-					keywords: ["subtitle", "h3"],
-					label: "Heading 3",
-					value: KEYS.h3,
-				},
-				{
-					icon: <ListIcon />,
-					keywords: ["unordered", "ul", "-"],
-					label: "Bulleted list",
-					value: KEYS.ul,
-				},
-				{
-					icon: <ListOrdered />,
-					keywords: ["ordered", "ol", "1"],
-					label: "Numbered list",
-					value: KEYS.ol,
-				},
-				{
-					icon: <Square />,
-					keywords: ["checklist", "task", "checkbox", "[]", "ㅌ", "툳", "투두"],
-					label: "To-do list",
-					value: KEYS.listTodo,
-				},
-				{
-					icon: <Code2 />,
-					keywords: ["```"],
-					label: "Code Block",
-					value: KEYS.codeBlock,
-				},
-				{
-					icon: <Table />,
-					keywords: ["ㅌ", "텡", "테입", "테이브", "테이블"],
+					icon: <Table className="size-4" />,
+					keywords: ["table", "grid", "表格"],
 					label: "Table",
 					value: KEYS.table,
+					onSelect: (editor) => {
+						insertBlock(editor, KEYS.table)
+					},
 				},
 				{
-					icon: <Quote />,
-					keywords: ["citation", "blockquote", "quote", ">"],
-					label: "Blockquote",
-					value: KEYS.blockquote,
+					focusEditor: false,
+					icon: <RadicalIcon className="size-4" />,
+					keywords: [
+						"math",
+						"equation",
+						"formula",
+						"latex",
+						"katex",
+						"公式",
+						"数学",
+					],
+					label: "Math Equation",
+					value: KEYS.equation,
+					onSelect: (editor) => {
+						insertBlock(editor, KEYS.equation)
+					},
 				},
 				{
-					description: "Insert a highlighted block.",
-					icon: <LightbulbIcon />,
-					keywords: ["note", "callout", "obsidian", "[!"],
-					label: "Callout",
-					value: KEYS.callout,
+					icon: <Code2 className="size-4" />,
+					keywords: [
+						"mermaid",
+						"plantuml",
+						"graphviz",
+						"flowchart",
+						"diagram",
+						"图表",
+						"流程图",
+					],
+					label: "Code Drawing",
+					value: CODE_DRAWING_KEY,
+					onSelect: (editor) => {
+						insertBlock(editor, CODE_DRAWING_KEY)
+					},
 				},
-			].map((item) => ({
-				...item,
-				onSelect: (editor, value) => {
-					editor.tf.withoutNormalizing(() => {
-						insertBlock(editor, value)
-						if (value === KEYS.codeBlock) {
-							applyPreviousCodeBlockLanguage(editor)
-						}
-					})
-				},
-			})),
+			],
 		},
 	]
 
 	if (host.pickImageFile && host.resolveImageLink) {
-		groups.push({
-			group: "Media",
-			items: [
-				{
-					icon: <ImageIcon />,
-					keywords: [
-						"picture",
-						"photo",
-						"ㅇ",
-						"임",
-						"이밎",
-						"이미지",
-						"ㅅ",
-						"샂",
-						"사지",
-						"사진",
-					],
-					label: "Image",
-					value: KEYS.img,
-					onSelect: async (editor) => {
-						const path = await host.pickImageFile!()
-						if (path) {
-							const block = editor.api.block()
-							if (block) {
-								await insertImageNode(editor, path, host, {
-									at: block[1],
-									nextBlock: false,
-								})
-							} else {
-								await insertImageNode(editor, path, host)
-							}
+		const insertGroup = groups.find((g) => g.group === "Insert")
+		if (insertGroup) {
+			insertGroup.items.unshift({
+				icon: <ImageIcon className="size-4" />,
+				keywords: ["picture", "photo", "image", "img", "图片", "照片"],
+				label: "Image",
+				value: KEYS.img,
+				onSelect: async (editor) => {
+					const path = await host.pickImageFile!()
+					if (path) {
+						const block = editor.api.block()
+						if (block) {
+							await insertImageNode(editor, path, host, {
+								at: block[1],
+								nextBlock: false,
+							})
+						} else {
+							await insertImageNode(editor, path, host)
 						}
-					},
+					}
 				},
-			],
-		})
+			})
+		}
 	}
 
 	groups.push(
-		{
-			group: "Advanced blocks",
-			items: [
-				{
-					focusEditor: false,
-					icon: <RadicalIcon />,
-					label: "Equation",
-					value: KEYS.equation,
-				},
-				{
-					icon: <Code2 />,
-					keywords: ["mermaid", "plantuml", "graphviz", "flowchart", "diagram"],
-					label: "Code Drawing",
-					value: CODE_DRAWING_KEY,
-				},
-			].map((item) => ({
-				...item,
-				onSelect: (editor, value) => {
-					insertBlock(editor, value)
-				},
-			})),
-		},
 		{
 			group: "Inline",
 			items: [
 				{
 					focusEditor: false,
-					icon: <SmileIcon />,
-					keywords: ["emoji", "smile", "이모지"],
+					icon: <SmileIcon className="size-4" />,
+					keywords: ["emoji", "smile", "表情", "符号"],
 					label: "Emoji",
 					value: "emoji",
 					onSelect: (editor: PlateEditor) => {
@@ -312,21 +341,30 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 				},
 				{
 					focusEditor: true,
-					icon: <CalendarIcon />,
-					keywords: ["time"],
+					icon: <CalendarIcon className="size-4" />,
+					keywords: ["date", "time", "today", "now", "日期", "时间"],
 					label: "Date",
 					value: KEYS.date,
 				},
 				{
 					focusEditor: false,
-					icon: <RadicalIcon />,
+					icon: <RadicalIcon className="size-4" />,
+					keywords: ["inline math", "formula", "行内公式"],
 					label: "Inline Equation",
 					value: KEYS.inlineEquation,
 				},
 				{
 					focusEditor: false,
-					icon: <FileText />,
-					keywords: ["wiki", "link", "internal", "note", "page"],
+					icon: <FileText className="size-4" />,
+					keywords: [
+						"wiki",
+						"link",
+						"internal",
+						"note",
+						"page",
+						"双链",
+						"笔记引用",
+					],
 					label: "Wiki Link",
 					value: "wikiLink",
 					onSelect: (editor: PlateEditor) => {
@@ -340,7 +378,6 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 							},
 							{ select: true },
 						)
-						// Defer: combobox close can overwrite selection; move cursor to end of link
 						const linkType = editor.getType(KEYS.link)
 						setTimeout(() => {
 							const sel = editor.selection
@@ -372,6 +409,59 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 				}
 			}),
 		},
+		{
+			group: "Document",
+			shouldHide: (editor) => {
+				const hasFrontmatter = editor.api.some({
+					match: { type: FRONTMATTER_KEY },
+				})
+				const currentBlock = editor.api.node({ block: true, mode: "lowest" })
+				const currentTopLevelIndex = currentBlock?.[1][0] ?? -1
+				const canInsertFrontmatter =
+					!hasFrontmatter &&
+					(currentTopLevelIndex === 1 ||
+						(currentTopLevelIndex === 0 &&
+							currentBlock?.[0].type === NOTE_TITLE_KEY))
+				return !canInsertFrontmatter
+			},
+			items: [
+				{
+					icon: <TableOfContentsIcon className="size-4" />,
+					keywords: [
+						"metadata",
+						"yaml",
+						"head",
+						"front matter",
+						"文档属性",
+						"元数据",
+					],
+					label: "Frontmatter",
+					value: "frontmatter",
+					onSelect: async (editor: PlateEditor) => {
+						if (editor.api.some({ match: { type: FRONTMATTER_KEY } })) return
+
+						let defaults = createDefaultFrontmatterRows()
+						if (host.getFrontmatterDefaults) {
+							try {
+								defaults = await host.getFrontmatterDefaults()
+							} catch {
+								defaults = createDefaultFrontmatterRows()
+							}
+						}
+
+						editor.tf.replaceNodes(
+							{
+								type: FRONTMATTER_KEY,
+								data: defaults,
+								children: [{ text: "" }],
+							},
+							{ at: [1] },
+						)
+						requestFrontmatterFocus(editor.id, "firstCell")
+					},
+				},
+			],
+		},
 	)
 
 	return groups
@@ -385,28 +475,6 @@ export const createSlashInputElement = (
 	return function SlashInputElement(props: PlateElementProps<SlashInputNode>) {
 		const { editor, element } = props
 		const source = element.source
-		const shouldReuseCurrentBlock = (type: string) => {
-			const currentBlock = editor.api.block()
-
-			if (!currentBlock || !editor.api.isEmpty(currentBlock[0])) {
-				return false
-			}
-
-			return getBlockType(currentBlock[0]) === type
-		}
-
-		const elementPath = editor.api.findPath(element)
-		const beforePoint = elementPath ? editor.api.before(elementPath) : null
-		const blockEntry =
-			beforePoint &&
-			editor.api.above({
-				at: beforePoint,
-				match: editor.api.isBlock,
-				mode: "highest",
-			})
-		const blockStart = blockEntry && editor.api.start(blockEntry[1])
-		const isAtBlockStart =
-			!!beforePoint && !!blockStart && PointApi.equals(beforePoint, blockStart)
 
 		return (
 			<PlateElement {...props} as="span">
@@ -439,21 +507,16 @@ export const createSlashInputElement = (
 					}}
 				>
 					<InlineComboboxInput
-						containerClassName="inline-flex items-center rounded-md bg-muted px-1 -ml-1 -mt-0.5"
-						className="placeholder:text-muted-foreground"
-						placeholder="Type to search"
+						containerClassName="inline-flex items-center rounded-md bg-muted/60 px-1 -ml-1 -mt-0.5"
+						className="placeholder:text-muted-foreground text-sm"
+						placeholder="Type to filter..."
 					/>
 
-					<InlineComboboxContent gutter={4}>
-						<InlineComboboxEmpty>No results</InlineComboboxEmpty>
+					<InlineComboboxContent gutter={6}>
+						<InlineComboboxEmpty>No matching commands</InlineComboboxEmpty>
 
 						{groups
-							.filter(({ shouldHide, group }) => {
-								if (!isAtBlockStart && group !== "Inline") {
-									return false
-								}
-								return !shouldHide?.(editor)
-							})
+							.filter(({ shouldHide }) => !shouldHide?.(editor))
 							.map(({ group, items }) => {
 								return (
 									<InlineComboboxGroup key={group}>
@@ -472,13 +535,6 @@ export const createSlashInputElement = (
 													key={value}
 													value={value}
 													onClick={() => {
-														if (
-															group === "Basic blocks" &&
-															shouldReuseCurrentBlock(value)
-														) {
-															return
-														}
-
 														void onSelect(editor, value)
 													}}
 													label={label}
@@ -486,10 +542,12 @@ export const createSlashInputElement = (
 													group={group}
 													keywords={keywords}
 												>
-													<div className="mr-2 text-muted-foreground">
+													<div className="mr-2.5 flex size-5 items-center justify-center text-muted-foreground/90 shrink-0">
 														{icon}
 													</div>
-													{label ?? value}
+													<span className="font-normal text-[13px]">
+														{label ?? value}
+													</span>
 												</InlineComboboxItem>
 											),
 										)}

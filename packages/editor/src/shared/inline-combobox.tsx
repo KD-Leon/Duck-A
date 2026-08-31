@@ -321,7 +321,7 @@ const InlineComboboxContent: typeof ComboboxPopover = ({
 	const isTop = side === "top"
 	const yOffset = isTop ? 4 : -4
 
-	const hiddenState = { opacity: 0, scale: 0.96, x: -6, y: yOffset }
+	const hiddenState = { opacity: 0, scale: 0.96, x: -4, y: yOffset }
 	const visibleState = { opacity: 1, scale: 1, x: 0, y: 0 }
 
 	// Portal prevents CSS from leaking into popover
@@ -329,7 +329,7 @@ const InlineComboboxContent: typeof ComboboxPopover = ({
 		<Portal>
 			<ComboboxPopover
 				className={cn(
-					"z-500 max-h-[288px] w-[300px] overflow-y-auto rounded-md bg-popover shadow-lg border",
+					"z-500 max-h-[320px] w-[260px] overflow-y-auto rounded-xl bg-popover/95 backdrop-blur-md shadow-2xl shadow-black/10 dark:shadow-black/50 border border-border/70 p-1 outline-none",
 					className,
 				)}
 				getAnchorRect={() => {
@@ -340,7 +340,7 @@ const InlineComboboxContent: typeof ComboboxPopover = ({
 						key={side ?? "bottom"}
 						initial={hiddenState}
 						animate={visibleState}
-						transition={{ duration: 0.14, ease: "easeOut" as const }}
+						transition={{ duration: 0.12, ease: "easeOut" as const }}
 					/>
 				}
 				{...props}
@@ -350,7 +350,7 @@ const InlineComboboxContent: typeof ComboboxPopover = ({
 }
 
 const comboboxItemVariants = cva(
-	"relative mx-1 flex h-8 items-center rounded-sm px-2 text-sm text-foreground/80 outline-none select-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+	"relative mx-0.5 flex h-8.5 items-center rounded-lg px-2.5 text-sm text-foreground/90 outline-none select-none transition-colors [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
 	{
 		defaultVariants: {
 			interactive: true,
@@ -358,7 +358,7 @@ const comboboxItemVariants = cva(
 		variants: {
 			interactive: {
 				false: "",
-				true: "cursor-pointer hover:bg-accent hover:text-accent-foreground data-[active-item=true]:bg-accent data-[active-item=true]:text-accent-foreground",
+				true: "cursor-pointer hover:bg-accent/80 hover:text-accent-foreground data-[active-item=true]:bg-accent data-[active-item=true]:text-accent-foreground",
 			},
 		},
 	},
@@ -429,7 +429,7 @@ const InlineComboboxEmpty = ({
 		<div
 			className={cn(
 				comboboxItemVariants({ interactive: false }),
-				"h-9",
+				"h-9 text-muted-foreground text-xs justify-center",
 				className,
 			)}
 		>
@@ -448,7 +448,7 @@ function InlineComboboxGroup({
 		<ComboboxGroup
 			{...props}
 			className={cn(
-				"hidden py-1.5 not-last:border-b [&:has([role=option])]:block",
+				"hidden py-1 not-last:border-b not-last:border-border/40 not-last:pb-1.5 not-last:mb-1 [&:has([role=option])]:block",
 				className,
 			)}
 		/>
@@ -463,7 +463,7 @@ function InlineComboboxGroupLabel({
 		<ComboboxGroupLabel
 			{...props}
 			className={cn(
-				"mt-1.5 mb-2 px-3 text-xs font-medium text-muted-foreground",
+				"px-2.5 pt-1 pb-1 text-[11px] font-semibold text-muted-foreground/70 uppercase tracking-wider",
 				className,
 			)}
 		/>

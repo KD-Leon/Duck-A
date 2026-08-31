@@ -153,7 +153,7 @@ describe("ai-settings-slice persistence", () => {
 			model: "gpt-5.4",
 		})
 
-		expect(store.getState().chatConfig).toEqual({
+		expect(store.getState().chatConfig).toMatchObject({
 			provider: "openai",
 			model: "gpt-5.4",
 			apiKey: "openai-secret",
@@ -193,7 +193,7 @@ describe("ai-settings-slice persistence", () => {
 			"openai",
 			"codex_oauth",
 		])
-		expect(store.getState().chatConfig).toEqual({
+		expect(store.getState().chatConfig).toMatchObject({
 			provider: "openai",
 			model: "gpt-5.4",
 			apiKey: "openai-secret",
@@ -268,7 +268,7 @@ describe("ai-settings-slice persistence", () => {
 
 		await store.getState().fetchOllamaModels()
 
-		expect(store.getState().chatConfig).toEqual({
+		expect(store.getState().chatConfig).toMatchObject({
 			provider: "ollama",
 			model: "old-model",
 			apiKey: "",

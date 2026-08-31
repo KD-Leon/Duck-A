@@ -1,15 +1,10 @@
-import { AI_PROVIDER_DEFINITIONS, type ChatProviderId } from "@mdit/ai"
 import type { ChatConfig } from "@/store"
 
-type ChatModelOption = { provider: ChatProviderId; model: string }
-type ChatModelSelectOption = ChatModelOption & { value: string }
-
-function isChatProviderId(value: string): value is ChatProviderId {
-	return Object.hasOwn(AI_PROVIDER_DEFINITIONS, value)
-}
+export type ChatModelOption = { provider: string; model: string }
+export type ChatModelSelectOption = ChatModelOption & { value: string }
 
 export function buildChatModelSelectValue(
-	provider: ChatProviderId,
+	provider: string,
 	model: string,
 ): string {
 	return `${provider}|${model}`
@@ -35,7 +30,7 @@ export function parseChatModelSelectValue(
 
 	const provider = value.slice(0, separatorIndex)
 	const model = value.slice(separatorIndex + 1)
-	if (!model || !isChatProviderId(provider)) {
+	if (!model || !provider) {
 		return null
 	}
 
@@ -66,7 +61,7 @@ export function resolveSelectedChatModelSelectValue(
 
 export async function handleChatModelSelectChange(
 	value: string,
-	onSelectModel: (provider: ChatProviderId, model: string) => Promise<void>,
+	onSelectModel: (provider: string, model: string) => Promise<void>,
 ): Promise<void> {
 	const parsed = parseChatModelSelectValue(value)
 	if (!parsed) {

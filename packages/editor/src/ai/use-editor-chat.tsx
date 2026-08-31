@@ -1,7 +1,6 @@
 import { type UseChatHelpers, useChat as useBaseChat } from "@ai-sdk/react"
 import {
 	buildProviderRequestOptions,
-	type ChatProviderId,
 	createModelFromChatConfig,
 	getEditorChatPromptTemplate,
 	getEditorChatSystemPrompt,
@@ -40,12 +39,7 @@ export type MessageDataPart = {
 export type Chat = UseChatHelpers<ChatMessage>
 export type ChatMessage = UIMessage<{}, MessageDataPart>
 
-export type EditorChatConfig = {
-	provider: ChatProviderId
-	model: string
-	apiKey: string
-	accountId?: string
-}
+export type EditorChatConfig = Parameters<typeof createModelFromChatConfig>[0]
 
 type TempEditor = ReturnType<typeof createSlateEditor>
 

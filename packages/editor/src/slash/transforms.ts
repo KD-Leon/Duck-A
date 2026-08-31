@@ -140,6 +140,8 @@ const setList = (
 		editor.api.create.block({
 			indent: 1,
 			listStyleType: type,
+			checked: type === KEYS.listTodo ? false : undefined,
+			type: editor.getType(KEYS.p),
 		}),
 		{
 			at: entry[1],
@@ -156,6 +158,19 @@ const setBlockMap: Record<
 	[KEYS.ul]: setList,
 	[ACTION_THREE_COLUMNS]: (editor) => toggleColumnGroup(editor, { columns: 3 }),
 	[KEYS.codeBlock]: (editor) => toggleCodeBlock(editor),
+	[KEYS.callout]: (editor, _type, entry) => {
+		const callout = normalizeObsidianCalloutData()
+		editor.tf.setNodes(
+			{
+				type: editor.getType(KEYS.callout),
+				calloutTitle: callout.calloutTitle,
+				calloutType: callout.calloutType,
+				defaultFolded: callout.defaultFolded,
+				isFoldable: callout.isFoldable,
+			},
+			{ at: entry[1] },
+		)
+	},
 }
 
 export const setBlockType = (
@@ -168,7 +183,7 @@ export const setBlockType = (
 			const [node, path] = entry
 
 			if (node[KEYS.listType]) {
-				editor.tf.unsetNodes([KEYS.listType, "indent"], { at: path })
+				editor.tf.unsetNodes([KEYS.listType, "indent", "checked"], { at: path })
 			}
 			if (type in setBlockMap) {
 				return setBlockMap[type](editor, type, entry)
@@ -193,6 +208,75 @@ export const setBlockType = (
 		for (const entry of entries) {
 			setEntry(entry)
 		}
+	})
+}
+
+export const turnIntoBlock = (
+	editor: PlateEditor,
+	type: string,
+	options: { at?: Path } = {},
+) => {
+	editor.tf.withoutNormalizing(() => {
+		const targetEntry = options.at
+			? editor.api.node<TElement>(options.at)
+			: editor.api.block()
+
+		if (!targetEntry) {
+			insertBlock(editor, type)
+			return
+		}
+
+		const [node, path] = targetEntry
+
+		// If it's already this type and not a list with different sub-type, nothing to do
+		if (node.type === type && !node[KEYS.listType]) {
+			return
+		}
+
+		// Handle list conversions
+		if (type === KEYS.ul || type === KEYS.ol || type === KEYS.listTodo) {
+			editor.tf.setNodes(
+				{
+					type: editor.getType(KEYS.p),
+					indent: 1,
+					listStyleType: type,
+					checked: type === KEYS.listTodo ? (node.checked ?? false) : undefined,
+				},
+				{ at: path },
+			)
+			return
+		}
+
+		// Unset list properties if turning into non-list block
+		if (node[KEYS.listType] || node.indent) {
+			editor.tf.unsetNodes([KEYS.listType, "indent", "checked"], { at: path })
+		}
+
+		// Handle Code Block
+		if (type === KEYS.codeBlock) {
+			toggleCodeBlock(editor)
+			return
+		}
+
+		// Handle Callout
+		if (type === KEYS.callout) {
+			const callout = normalizeObsidianCalloutData()
+			editor.tf.setNodes(
+				{
+					type: editor.getType(KEYS.callout),
+					calloutTitle: callout.calloutTitle,
+					calloutType: callout.calloutType,
+					defaultFolded: callout.defaultFolded,
+					isFoldable: callout.isFoldable,
+				},
+				{ at: path },
+			)
+			return
+		}
+
+		// Standard block types (h1, h2, h3, h4, h5, h6, blockquote, p)
+		const targetType = editor.getType(type) || type
+		editor.tf.setNodes({ type: targetType }, { at: path })
 	})
 }
 

@@ -1,4 +1,21 @@
-export type ProviderId = "openai" | "google" | "anthropic" | "codex_oauth"
+export type ProviderId =
+	| "openai"
+	| "google"
+	| "anthropic"
+	| "deepseek"
+	| "siliconflow"
+	| "moonshot"
+	| "zhipu"
+	| "dashscope"
+	| "baichuan"
+	| "minimax"
+	| "stepfun"
+	| "together"
+	| "groq"
+	| "openrouter"
+	| "mistral"
+	| "codex_oauth"
+
 export type ApiKeyProviderId = Exclude<ProviderId, "codex_oauth">
 export type AppSecretKey = "local_api_token" | "license_key"
 

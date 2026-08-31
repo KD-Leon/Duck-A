@@ -82,6 +82,47 @@ export interface Translations {
 			refreshing: string
 			getApiKey: string
 			noModelsAvailable: string
+			customProviders: string
+			customProvidersDesc: string
+			addCustomProvider: string
+			editCustomProvider: string
+			deleteCustomProvider: string
+			providerName: string
+			protocol: string
+			baseUrl: string
+			customHeaders: string
+			customHeadersPlaceholder: string
+			fetchModels: string
+			fetchingModels: string
+			modelsFetched: string
+			fetchFailed: string
+			visionCapability: string
+			toolsCapability: string
+			reasoningCapability: string
+			customBaseUrl: string
+			customBaseUrlDesc: string
+			saveProvider: string
+			searchProviders: string
+			searchModels: string
+			activeModels: string
+			providerConfig: string
+			generalSettings: string
+			chatHistoryRounds: string
+			chatHistoryRoundsDesc: string
+			systemPromptLabel: string
+			systemPromptDesc: string
+			systemPromptPlaceholder: string
+			addCustomModel: string
+			modelIdPlaceholder: string
+			resetDefault: string
+			contextWindowLabel: string
+			contextWindowDesc: string
+			maxOutputTokensLabel: string
+			maxOutputTokensDesc: string
+			temperatureLabel: string
+			temperatureDesc: string
+			modelParameters: string
+			capabilitiesLabel: string
 		}
 		sync: {
 			title: string
@@ -247,6 +288,9 @@ export interface Translations {
 		aiSettings: string
 		askAssistant: string
 		model: string
+		attachImage: string
+		thinking: string
+		thoughtProcess: string
 	}
 	image: {
 		editTitle: string
