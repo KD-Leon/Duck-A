@@ -11,6 +11,10 @@ export default defineConfig(() => ({
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "./src"),
+			"@mdit/s3-sync": path.resolve(
+				__dirname,
+				"../../packages/s3-sync/src/index.ts",
+			),
 		},
 	},
 
