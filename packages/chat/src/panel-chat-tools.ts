@@ -19,13 +19,17 @@ type ReadDocumentResult = {
 const MAX_ACTIVE_DOCUMENT_LENGTH = 4000
 
 export const PANEL_CHAT_TOOLS_SYSTEM_SUFFIX = `
-You have access to tools for interacting with the user's workspace notes:
-- read_active_document: Reads the note currently open in the active editor tab.
-- read_specified_document: Reads any markdown document specified by its file path or filename.
-- search_vault_notes: Searches across all notes in the vault/workspace by keywords.
-- create_new_document: Creates a new markdown note in the workspace.
-- append_to_active_document: Appends markdown text to the end of the currently active note.
-Use these tools autonomously when the user's question asks to inspect, search, create, or modify notes.`
+【工作区工具调用准则 / Tools Action Guidelines】:
+你拥有直接访问与操作用户本地工作区笔记的工具集：
+1. search_vault_notes({ query }): 搜索工作区中所有笔记的标题与内容。当用户提及工作区知识、询问某主题、或者需要了解已有哪些笔记时，必须立即调用此工具搜索笔记，绝不要空口说“我先去查查”，而是先直接行动调用工具！
+2. read_active_document(): 读取当前正在打开的编辑器文档全文。
+3. read_specified_document({ filePath }): 读取指定路径或文件名的笔记内容。
+4. create_new_document({ title, content }): 直接在工作区创建新的 Markdown 笔记。
+5. append_to_active_document({ content }): 向当前打开的笔记末尾追加内容。
+
+【行动优先原则 / Action First】:
+- 当用户要求搜索、查找、整理、总结或创建笔记时，请在回答前直接发起对应的 Tool Call，获取真实数据后再输出综合解答！
+- 严禁仅在纯文本中承诺“我稍后去查”，必须在当前回合立即调用工具！`
 
 export function createPanelChatTools(deps: PanelChatToolDeps): ToolSet {
 	const tools: ToolSet = {

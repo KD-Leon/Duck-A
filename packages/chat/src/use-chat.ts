@@ -5,8 +5,6 @@ import {
 } from "@mdit/ai"
 import {
 	convertToModelMessages,
-	createUIMessageStream,
-	createUIMessageStreamResponse,
 	DefaultChatTransport,
 	stepCountIs,
 	streamText,
@@ -191,74 +189,65 @@ export function useChat(options: UseChatOptions): UseChatResult {
 							: allMessages
 					const abortSignal = init?.signal as AbortSignal | undefined
 
-					const stream = createUIMessageStream({
-						execute: async ({ writer }) => {
-							const rawModelMessages = await convertToModelMessages(messages)
-							let modelMessages = rawModelMessages
-							const contextSnippet = latestContextSnippetRef.current
-							if (contextSnippet && modelMessages.length > 0) {
-								const lastIdx = modelMessages.length - 1
-								const lastMsg = modelMessages[lastIdx]
-								if (lastMsg.role === "user") {
-									if (typeof lastMsg.content === "string") {
-										modelMessages = [
-											...modelMessages.slice(0, lastIdx),
+					const rawModelMessages = await convertToModelMessages(messages)
+					let modelMessages = rawModelMessages
+					const contextSnippet = latestContextSnippetRef.current
+					if (contextSnippet && modelMessages.length > 0) {
+						const lastIdx = modelMessages.length - 1
+						const lastMsg = modelMessages[lastIdx]
+						if (lastMsg.role === "user") {
+							if (typeof lastMsg.content === "string") {
+								modelMessages = [
+									...modelMessages.slice(0, lastIdx),
+									{
+										...lastMsg,
+										content: `${lastMsg.content}\n\n${contextSnippet}`,
+									},
+								]
+							} else if (Array.isArray(lastMsg.content)) {
+								modelMessages = [
+									...modelMessages.slice(0, lastIdx),
+									{
+										...lastMsg,
+										content: [
+											...lastMsg.content,
 											{
-												...lastMsg,
-												content: `${lastMsg.content}\n\n${contextSnippet}`,
-											},
-										]
-									} else if (Array.isArray(lastMsg.content)) {
-										modelMessages = [
-											...modelMessages.slice(0, lastIdx),
-											{
-												...lastMsg,
-												content: [
-													...lastMsg.content,
-													{
-														type: "text",
-														text: `\n\n${contextSnippet}`,
-													} as any,
-												],
-											},
-										]
-									}
-								}
-								latestContextSnippetRef.current = null
+												type: "text",
+												text: `\n\n${contextSnippet}`,
+											} as any,
+										],
+									},
+								]
 							}
+						}
+						latestContextSnippetRef.current = null
+					}
 
-							const policyInstruction = latestPolicyInstructionRef.current
-							const systemWithPolicy = [
-								effectiveSystemPrompt,
-								policyInstruction,
-							]
-								.filter(Boolean)
-								.join("\n\n")
+					const policyInstruction = latestPolicyInstructionRef.current
+					const systemWithPolicy = [effectiveSystemPrompt, policyInstruction]
+						.filter(Boolean)
+						.join("\n\n")
 
-							const result = streamText({
-								...buildProviderRequestOptions(
-									activeConfig.provider,
-									systemWithPolicy,
-								),
-								abortSignal,
-								messages: modelMessages,
-								model,
-								...(activeConfig.maxOutputTokens
-									? { maxTokens: activeConfig.maxOutputTokens }
-									: {}),
-								...(activeConfig.temperature !== undefined
-									? { temperature: activeConfig.temperature }
-									: {}),
-								...(panelChatTools
-									? { stopWhen: stepCountIs(5), tools: panelChatTools }
-									: {}),
-							})
-
-							await writer.merge(result.toUIMessageStream())
-						},
+					const result = streamText({
+						...buildProviderRequestOptions(
+							activeConfig.provider,
+							systemWithPolicy,
+						),
+						abortSignal,
+						messages: modelMessages,
+						model,
+						...(activeConfig.maxOutputTokens
+							? { maxTokens: activeConfig.maxOutputTokens }
+							: {}),
+						...(activeConfig.temperature !== undefined
+							? { temperature: activeConfig.temperature }
+							: {}),
+						...(panelChatTools
+							? { stopWhen: stepCountIs(5), tools: panelChatTools }
+							: {}),
 					})
 
-					return createUIMessageStreamResponse({ stream })
+					return result.toUIMessageStreamResponse()
 				},
 			}),
 		[
