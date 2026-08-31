@@ -1103,13 +1103,14 @@ export function Chat({
 						disabled={textInputDisabled}
 						placeholder={askAssistantText}
 					/>
-					<PromptInputFooter>
-						<div className="flex items-center gap-1">
+					<PromptInputFooter className="flex flex-wrap items-center justify-between gap-1">
+						<div className="flex items-center gap-0.5 shrink min-w-0 flex-wrap">
 							{/* @ Mention trigger */}
 							<PromptInputButton
 								type="button"
 								size="icon-sm"
 								tooltip="引用笔记上下文 (@)"
+								className="shrink-0"
 								onClick={() => {
 									setShowMentionMenu((prev) => !prev)
 									setShowSlashMenu(false)
@@ -1127,6 +1128,7 @@ export function Chat({
 								type="button"
 								size="icon-sm"
 								tooltip="快捷指令 (/)"
+								className="shrink-0"
 								onClick={() => {
 									setShowSlashMenu((prev) => !prev)
 									setShowMentionMenu(false)
@@ -1141,24 +1143,26 @@ export function Chat({
 
 							{supportsVision && <AttachmentButton tooltip={attachImageText} />}
 							{toolsContent ? (
-								<PromptInputTools>{toolsContent}</PromptInputTools>
+								<PromptInputTools className="shrink min-w-0">
+									{toolsContent}
+								</PromptInputTools>
 							) : null}
 						</div>
 
-						<div className="flex items-center gap-2 relative ml-auto">
+						<div className="flex items-center gap-1.5 relative ml-auto shrink-0">
 							{/* Context Token Usage Circle / Pill */}
-							<div className="relative">
+							<div className="relative shrink-0">
 								<button
 									type="button"
 									onClick={() => {
 										setShowTokenUsagePopover((p) => !p)
 										setShowModeMenu(false)
 									}}
-									className="flex items-center gap-1 px-1.5 py-0.5 rounded-full hover:bg-muted text-[11px] text-muted-foreground transition-colors group cursor-pointer"
+									className="flex items-center gap-1 px-1.5 py-0.5 rounded-full hover:bg-muted text-[11px] text-muted-foreground transition-colors group cursor-pointer shrink-0 whitespace-nowrap"
 									title={`当前上下文占用: ~${tokenStats.totalEstimated.toLocaleString()} / ${tokenStats.maxTokens.toLocaleString()} tokens (${tokenStats.percentage}%)`}
 								>
 									{/* SVG Circular Progress Ring */}
-									<div className="relative size-3.5 flex items-center justify-center">
+									<div className="relative size-3.5 flex items-center justify-center shrink-0">
 										<svg className="size-full -rotate-90" viewBox="0 0 32 32">
 											<circle
 												cx="16"
@@ -1270,7 +1274,7 @@ export function Chat({
 							</div>
 
 							{/* Execution Policy Mode Selector */}
-							<div className="relative">
+							<div className="relative shrink-0">
 								<button
 									type="button"
 									onClick={() => {
@@ -1279,7 +1283,7 @@ export function Chat({
 										setShowMentionMenu(false)
 										setShowTokenUsagePopover(false)
 									}}
-									className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-muted/60 hover:bg-muted text-foreground/90 border border-border/40 transition-colors shadow-2xs"
+									className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-muted/60 hover:bg-muted text-foreground/90 border border-border/40 transition-colors shadow-2xs shrink-0 whitespace-nowrap"
 								>
 									{(() => {
 										const current =
@@ -1288,14 +1292,16 @@ export function Chat({
 										const CurrentIcon = current.icon
 										return (
 											<>
-												<CurrentIcon className="size-3.5 text-purple-500" />
-												<span>{current.label}</span>
+												<CurrentIcon className="size-3.5 text-purple-500 shrink-0" />
+												<span className="whitespace-nowrap">
+													{current.label}
+												</span>
 											</>
 										)
 									})()}
 								</button>
 
-								{/* Mode Dropdown Popup (Matched exactly with user screenshot) */}
+								{/* Mode Dropdown Popup */}
 								{showModeMenu && (
 									<div className="absolute bottom-[calc(100%+8px)] right-0 z-50 w-72 rounded-xl border border-border/60 bg-popover/98 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
 										<div className="space-y-0.5">
@@ -1346,6 +1352,7 @@ export function Chat({
 							<PromptInputSubmit
 								disabled={submitDisabled}
 								status={pending ? "submitted" : undefined}
+								className="shrink-0"
 							/>
 						</div>
 					</PromptInputFooter>

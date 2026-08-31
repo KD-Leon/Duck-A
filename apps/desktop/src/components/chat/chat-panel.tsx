@@ -367,7 +367,7 @@ function ChatPanelContent() {
 					}}
 					value={selectedModelValue}
 				>
-					<SelectTrigger className="h-7 min-w-[110px] max-w-[180px] rounded-sm text-xs px-2">
+					<SelectTrigger className="h-7 min-w-[50px] max-w-[110px] rounded-sm text-xs px-1.5 shrink truncate">
 						<span className="truncate">
 							{currentModelDisplayName ?? t.chat.model}
 						</span>

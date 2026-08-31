@@ -1092,7 +1092,10 @@ export const PromptInputFooter = ({
 }: PromptInputFooterProps) => (
 	<InputGroupAddon
 		align="block-end"
-		className={cn("justify-between gap-1", className)}
+		className={cn(
+			"flex flex-wrap items-center justify-between gap-1.5",
+			className,
+		)}
 		{...props}
 	/>
 )
