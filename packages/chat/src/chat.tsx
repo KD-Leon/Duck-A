@@ -8,14 +8,18 @@ import {
 	IconCopy,
 	IconCursorText,
 	IconDownload,
+	IconEye,
 	IconFileDescription,
 	IconFilePlus,
 	IconFileText,
 	IconHistory,
+	IconInfoCircle,
 	IconListCheck,
 	IconPaperclip,
 	IconPencil,
 	IconRobot,
+	IconShield,
+	IconShieldCheck,
 	IconSparkles,
 	IconTable,
 	IconTrash,
@@ -23,6 +27,34 @@ import {
 } from "@tabler/icons-react"
 import type { ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
+
+export type ExecutionMode = "readonly" | "confirm" | "auto"
+
+export const EXECUTION_MODES: Array<{
+	id: ExecutionMode
+	label: string
+	description: string
+	icon: typeof IconShield
+}> = [
+	{
+		id: "readonly",
+		label: "只读",
+		description: "允许读取和分析，禁止修改内容。",
+		icon: IconEye,
+	},
+	{
+		id: "confirm",
+		label: "修改前确认",
+		description: "模型自由规划；每个具体修改在执行前展示确认。",
+		icon: IconShield,
+	},
+	{
+		id: "auto",
+		label: "自动修改",
+		description: "本地可恢复修改自动执行；删除、脚本等高危操作仍需确认。",
+		icon: IconShieldCheck,
+	},
+]
 
 import {
 	Conversation,
@@ -221,7 +253,54 @@ export function Chat({
 	const [showSlashMenu, setShowSlashMenu] = useState(false)
 	const [showMentionMenu, setShowMentionMenu] = useState(false)
 	const [showHistoryDrawer, setShowHistoryDrawer] = useState(false)
+	const [showModeMenu, setShowModeMenu] = useState(false)
+	const [showTokenUsagePopover, setShowTokenUsagePopover] = useState(false)
 	const [mentionSearch, setMentionSearch] = useState("")
+
+	// Execution Mode state
+	const [executionMode, setExecutionMode] = useState<ExecutionMode>(() => {
+		if (typeof window !== "undefined") {
+			const saved = localStorage.getItem(
+				"mdit_ai_execution_mode",
+			) as ExecutionMode
+			if (saved === "readonly" || saved === "confirm" || saved === "auto") {
+				return saved
+			}
+		}
+		return "auto"
+	})
+
+	const handleSelectMode = useCallback((mode: ExecutionMode) => {
+		setExecutionMode(mode)
+		setShowModeMenu(false)
+		if (typeof window !== "undefined") {
+			localStorage.setItem("mdit_ai_execution_mode", mode)
+		}
+	}, [])
+
+	// Token usage estimation
+	const tokenStats = useMemo(() => {
+		const historyChars = messages.reduce(
+			(acc, m) => acc + (m.content?.length || 0) + (m.reasoning?.length || 0),
+			0,
+		)
+		const historyTokens = Math.ceil(historyChars / 2.5)
+		const contextFilesTokens = attachedContextFiles.length * 800
+		const totalEstimated = historyTokens + contextFilesTokens
+		const maxTokens = 128000
+		const ratio = Math.min(1, totalEstimated / maxTokens)
+		const percentage = (ratio * 100).toFixed(1)
+
+		return {
+			historyTokens,
+			contextFilesTokens,
+			totalEstimated,
+			maxTokens,
+			ratio,
+			percentage,
+		}
+	}, [messages, attachedContextFiles])
+
 	const [sessions, setSessions] = useState<ChatSession[]>(() =>
 		loadStoredSessions(),
 	)
@@ -320,6 +399,8 @@ export function Chat({
 		async (message: PromptInputMessage) => {
 			setShowSlashMenu(false)
 			setShowMentionMenu(false)
+			setShowModeMenu(false)
+			setShowTokenUsagePopover(false)
 			const filesPayload =
 				message.files.length > 0
 					? message.files.map((f) => ({
@@ -333,13 +414,25 @@ export function Chat({
 				? await resolveContextSnippet()
 				: undefined
 
+			let policyInstruction = ""
+			if (executionMode === "readonly") {
+				policyInstruction =
+					"\n\n【权限约束：只读模式】你当前处于只读分析模式，严禁直接调用写入/修改工具，只输出分析或回答。"
+			} else if (executionMode === "confirm") {
+				policyInstruction =
+					"\n\n【权限约束：修改前确认模式】在提出修改方案时，请展示清晰的 Diff 与修改规划，明确指出变更点供用户确认。"
+			} else if (executionMode === "auto") {
+				policyInstruction =
+					"\n\n【权限约束：自动修改模式】允许直接调用工具对工作区笔记进行精准编辑与创建。"
+			}
+
 			await onSend({
-				text: message.text,
+				text: `${message.text}${policyInstruction}`,
 				files: filesPayload,
 				contextSnippet: contextSnippet ?? undefined,
 			})
 		},
-		[onSend, resolveContextSnippet],
+		[executionMode, onSend, resolveContextSnippet],
 	)
 
 	const handleQuickPrompt = useCallback(
@@ -1020,6 +1113,8 @@ export function Chat({
 								onClick={() => {
 									setShowMentionMenu((prev) => !prev)
 									setShowSlashMenu(false)
+									setShowModeMenu(false)
+									setShowTokenUsagePopover(false)
 								}}
 							>
 								<span className="font-mono text-xs font-bold text-muted-foreground hover:text-foreground">
@@ -1035,6 +1130,8 @@ export function Chat({
 								onClick={() => {
 									setShowSlashMenu((prev) => !prev)
 									setShowMentionMenu(false)
+									setShowModeMenu(false)
+									setShowTokenUsagePopover(false)
 								}}
 							>
 								<span className="font-mono text-xs font-bold text-muted-foreground hover:text-foreground">
@@ -1047,10 +1144,210 @@ export function Chat({
 								<PromptInputTools>{toolsContent}</PromptInputTools>
 							) : null}
 						</div>
-						<PromptInputSubmit
-							disabled={submitDisabled}
-							status={pending ? "submitted" : undefined}
-						/>
+
+						<div className="flex items-center gap-2 relative ml-auto">
+							{/* Context Token Usage Circle / Pill */}
+							<div className="relative">
+								<button
+									type="button"
+									onClick={() => {
+										setShowTokenUsagePopover((p) => !p)
+										setShowModeMenu(false)
+									}}
+									className="flex items-center gap-1 px-1.5 py-0.5 rounded-full hover:bg-muted text-[11px] text-muted-foreground transition-colors group cursor-pointer"
+									title={`当前上下文占用: ~${tokenStats.totalEstimated.toLocaleString()} / ${tokenStats.maxTokens.toLocaleString()} tokens (${tokenStats.percentage}%)`}
+								>
+									{/* SVG Circular Progress Ring */}
+									<div className="relative size-3.5 flex items-center justify-center">
+										<svg className="size-full -rotate-90" viewBox="0 0 32 32">
+											<circle
+												cx="16"
+												cy="16"
+												r="12"
+												className="stroke-muted-foreground/20 fill-none"
+												strokeWidth="4"
+											/>
+											<circle
+												cx="16"
+												cy="16"
+												r="12"
+												className={cn(
+													"fill-none transition-all duration-300",
+													tokenStats.ratio > 0.85
+														? "stroke-rose-500"
+														: tokenStats.ratio > 0.6
+															? "stroke-amber-500"
+															: "stroke-purple-500",
+												)}
+												strokeWidth="4"
+												strokeDasharray={75.4}
+												strokeDashoffset={75.4 * (1 - tokenStats.ratio)}
+												strokeLinecap="round"
+											/>
+										</svg>
+									</div>
+									<span className="text-[10px] font-mono opacity-80 group-hover:opacity-100">
+										{tokenStats.totalEstimated > 1000
+											? `${(tokenStats.totalEstimated / 1000).toFixed(1)}k`
+											: tokenStats.totalEstimated}
+									</span>
+								</button>
+
+								{/* Token Usage Popover */}
+								{showTokenUsagePopover && (
+									<div className="absolute bottom-[calc(100%+8px)] right-0 z-50 w-64 rounded-xl border border-border/60 bg-popover/95 p-3 shadow-xl backdrop-blur-md text-xs space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
+										<div className="flex items-center justify-between pb-1.5 border-b border-border/40">
+											<div className="flex items-center gap-1.5 font-semibold text-foreground">
+												<IconInfoCircle className="size-3.5 text-purple-500" />
+												<span>上下文窗口占用</span>
+											</div>
+											<button
+												type="button"
+												onClick={() => setShowTokenUsagePopover(false)}
+												className="text-muted-foreground hover:text-foreground"
+											>
+												<IconX className="size-3" />
+											</button>
+										</div>
+
+										{/* Progress Bar */}
+										<div className="space-y-1">
+											<div className="flex items-center justify-between text-[11px]">
+												<span className="text-muted-foreground">
+													容量使用率
+												</span>
+												<span className="font-mono font-medium text-foreground">
+													{tokenStats.percentage}%
+												</span>
+											</div>
+											<div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+												<div
+													className={cn(
+														"h-full rounded-full transition-all duration-300",
+														tokenStats.ratio > 0.85
+															? "bg-rose-500"
+															: tokenStats.ratio > 0.6
+																? "bg-amber-500"
+																: "bg-purple-500",
+													)}
+													style={{
+														width: `${Math.max(1, Number(tokenStats.percentage))}%`,
+													}}
+												/>
+											</div>
+										</div>
+
+										{/* Breakdown items */}
+										<div className="space-y-1.5 pt-1 text-[11px]">
+											<div className="flex items-center justify-between">
+												<span className="text-muted-foreground">
+													💬 对话历史:
+												</span>
+												<span className="font-mono text-foreground font-medium">
+													~{tokenStats.historyTokens.toLocaleString()} tokens
+												</span>
+											</div>
+											<div className="flex items-center justify-between">
+												<span className="text-muted-foreground">
+													📎 附加笔记上下文:
+												</span>
+												<span className="font-mono text-foreground font-medium">
+													~{tokenStats.contextFilesTokens.toLocaleString()}{" "}
+													tokens ({attachedContextFiles.length} 篇)
+												</span>
+											</div>
+											<div className="flex items-center justify-between pt-1 border-t border-border/30 font-medium">
+												<span className="text-foreground">
+													总计估算 / 上限:
+												</span>
+												<span className="font-mono text-purple-600 dark:text-purple-400">
+													~{tokenStats.totalEstimated.toLocaleString()} / 128k
+												</span>
+											</div>
+										</div>
+									</div>
+								)}
+							</div>
+
+							{/* Execution Policy Mode Selector */}
+							<div className="relative">
+								<button
+									type="button"
+									onClick={() => {
+										setShowModeMenu((prev) => !prev)
+										setShowSlashMenu(false)
+										setShowMentionMenu(false)
+										setShowTokenUsagePopover(false)
+									}}
+									className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium bg-muted/60 hover:bg-muted text-foreground/90 border border-border/40 transition-colors shadow-2xs"
+								>
+									{(() => {
+										const current =
+											EXECUTION_MODES.find((m) => m.id === executionMode) ||
+											EXECUTION_MODES[2]
+										const CurrentIcon = current.icon
+										return (
+											<>
+												<CurrentIcon className="size-3.5 text-purple-500" />
+												<span>{current.label}</span>
+											</>
+										)
+									})()}
+								</button>
+
+								{/* Mode Dropdown Popup (Matched exactly with user screenshot) */}
+								{showModeMenu && (
+									<div className="absolute bottom-[calc(100%+8px)] right-0 z-50 w-72 rounded-xl border border-border/60 bg-popover/98 p-1.5 shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+										<div className="space-y-0.5">
+											{EXECUTION_MODES.map((mode) => {
+												const Icon = mode.icon
+												const isSelected = executionMode === mode.id
+												return (
+													<button
+														key={mode.id}
+														type="button"
+														onClick={() => handleSelectMode(mode.id)}
+														className={cn(
+															"w-full flex items-start gap-2.5 p-2.5 rounded-lg text-left transition-colors",
+															isSelected
+																? "bg-accent/80 text-foreground"
+																: "hover:bg-accent/40 text-foreground/80",
+														)}
+													>
+														<Icon
+															className={cn(
+																"size-4 shrink-0 mt-0.5",
+																isSelected
+																	? "text-purple-500"
+																	: "text-muted-foreground",
+															)}
+														/>
+														<div className="flex-1 min-w-0">
+															<div className="flex items-center justify-between">
+																<span className="text-xs font-semibold text-foreground">
+																	{mode.label}
+																</span>
+																{isSelected && (
+																	<IconCheck className="size-3.5 text-foreground shrink-0" />
+																)}
+															</div>
+															<p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+																{mode.description}
+															</p>
+														</div>
+													</button>
+												)
+											})}
+										</div>
+									</div>
+								)}
+							</div>
+
+							<PromptInputSubmit
+								disabled={submitDisabled}
+								status={pending ? "submitted" : undefined}
+							/>
+						</div>
 					</PromptInputFooter>
 				</PromptInput>
 			</div>
