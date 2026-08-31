@@ -35,7 +35,7 @@ export const en: Translations = {
 			preferences: "Preferences",
 			ai: "AI",
 			"api-mcp": "MCP",
-			sync: "Sync",
+			sync: "Sync & Backup",
 			"s3-storage": "S3 Storage",
 			indexing: "Indexing",
 			hotkeys: "Hotkeys",

@@ -35,7 +35,7 @@ export const zh: Translations = {
 			preferences: "偏好设置",
 			ai: "人工智能",
 			"api-mcp": "MCP",
-			sync: "Git 同步",
+			sync: "同步与备份",
 			"s3-storage": "S3 存储",
 			indexing: "内容索引",
 			hotkeys: "快捷键",

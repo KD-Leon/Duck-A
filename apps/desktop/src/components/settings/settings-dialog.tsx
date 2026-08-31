@@ -8,7 +8,6 @@ import { ApiMcpTab } from "./api-mcp/api-mcp-tab"
 import { HotkeysTab } from "./hotkeys/hotkeys-tab"
 import { IndexingTab } from "./indexing/indexing-tab"
 import { PreferencesTab } from "./preferences/preferences-tab"
-import { S3StorageTab } from "./s3-storage/s3-storage-tab"
 import { SettingsNavigation } from "./settings-navigation"
 import { coerceSettingsTab } from "./settings-tabs"
 import { SyncTab } from "./sync/sync-tab"
@@ -19,7 +18,7 @@ const SETTINGS_TAB_COMPONENTS: Record<SettingsTab, ComponentType> = {
 	ai: AITab,
 	"api-mcp": ApiMcpTab,
 	sync: SyncTab,
-	"s3-storage": S3StorageTab,
+	"s3-storage": SyncTab,
 	indexing: IndexingTab,
 }
 

@@ -4,7 +4,6 @@ import {
 	IconCloud,
 	IconKeyboard,
 	IconPlugConnected,
-	IconRefresh,
 	IconSearch,
 } from "@tabler/icons-react"
 import type { ComponentType } from "react"
@@ -29,7 +28,7 @@ export const SETTINGS_TAB_META: Record<
 	preferences: { label: "Preferences", icon: IconAdjustmentsHorizontal },
 	ai: { label: "AI", icon: IconBrain },
 	"api-mcp": { label: "MCP", icon: IconPlugConnected },
-	sync: { label: "Git Sync", icon: IconRefresh },
+	sync: { label: "Sync & Backup", icon: IconCloud },
 	"s3-storage": { label: "S3 Storage", icon: IconCloud },
 	indexing: { label: "Indexing", icon: IconSearch },
 	hotkeys: { label: "Hotkeys", icon: IconKeyboard },
@@ -44,7 +43,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 	{
 		id: "vault",
 		label: "Vault",
-		tabs: ["sync", "s3-storage", "indexing"],
+		tabs: ["sync", "indexing"],
 	},
 	{
 		id: "features",
@@ -53,11 +52,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 	},
 ]
 
-const WORKSPACE_ONLY_TABS = new Set<SettingsTab>([
-	"sync",
-	"s3-storage",
-	"indexing",
-])
+const WORKSPACE_ONLY_TABS = new Set<SettingsTab>(["sync", "indexing"])
 
 export function isSettingsTabAvailable(
 	tab: SettingsTab,
