@@ -1,0 +1,9 @@
+{
+	"extends": "@mdit/tsconfig/node",
+	"compilerOptions": {
+		"paths": {
+			"@/*": ["./src/*"]
+		}
+	},
+	"include": ["vite.config.ts"]
+}

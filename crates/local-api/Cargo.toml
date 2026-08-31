@@ -1,0 +1,11 @@
+[package]
+name = "local-api"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+app-storage = { path = "../app-storage" }
+vault-indexing = { path = "../vault-indexing" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"

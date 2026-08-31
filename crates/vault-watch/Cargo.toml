@@ -1,0 +1,15 @@
+[package]
+name = "vault-watch"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+notify = "8"
+notify-debouncer-full = "0.7"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+uuid = { version = "1", features = ["serde", "v4"] }
+walkdir = "2"
+
+[dev-dependencies]
+serde_json = "1"

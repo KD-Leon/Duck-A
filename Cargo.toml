@@ -1,0 +1,9 @@
+[workspace]
+members = [
+  "apps/desktop/src-tauri",
+  "crates/*"
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"

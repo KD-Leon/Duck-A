@@ -1,0 +1,341 @@
+import type { Language } from "@mdit/store/core"
+import type { AppHotkeyActionId } from "@mdit/store/hotkeys"
+
+export type { Language }
+
+export interface Translations {
+	common: {
+		save: string
+		cancel: string
+		delete: string
+		rename: string
+		copy: string
+		paste: string
+		confirm: string
+		retry: string
+		loading: string
+		empty: string
+		unassigned: string
+		resetDefaults: string
+		copied: string
+		failedToCopy: string
+		openFolder: string
+		noFolder: string
+	}
+	welcome: {
+		title: string
+		subtitle: string
+		openFolder: string
+	}
+	settings: {
+		title: string
+		sections: {
+			account: string
+			vault: string
+			features: string
+		}
+		tabs: {
+			preferences: string
+			ai: string
+			"api-mcp": string
+			sync: string
+			indexing: string
+			hotkeys: string
+		}
+		preferences: {
+			title: string
+			description: string
+			appearance: string
+			appearanceDesc: string
+			themeLight: string
+			themeDark: string
+			themeSystem: string
+			language: string
+			languageDesc: string
+			languageEn: string
+			languageZh: string
+			beta: string
+			betaDesc: string
+			agentChatPanel: string
+			agentChatPanelDesc: string
+			chatPanelHotkeyShow: string
+			chatPanelHotkeyCustomize: string
+			chatPanelHotkeyAssign: string
+		}
+		ai: {
+			models: string
+			modelsDesc: string
+			chatModel: string
+			chatModelDesc: string
+			chatModelPlaceholder: string
+			noConnectedProviders: string
+			enabledModels: string
+			enabledModelsDesc: string
+			providers: string
+			providersDesc: string
+			connectWithApiKey: string
+			connected: string
+			connect: string
+			disconnect: string
+			apiKeyPlaceholder: string
+			refreshModels: string
+			refreshing: string
+			getApiKey: string
+			noModelsAvailable: string
+		}
+		sync: {
+			title: string
+			description: string
+			noWorkspace: string
+			autoSync: string
+			autoSyncDesc: string
+			branchName: string
+			branchNameDesc: string
+			branchPlaceholder: string
+			commitMessage: string
+			commitMessageDesc: string
+			commitMessagePlaceholder: string
+		}
+		indexing: {
+			title: string
+			description: string
+			embeddingModel: string
+			indexingProgress: string
+			indexingProgressDesc: string
+			progressNote: string
+			filesIndexed: string
+			manuallyIndex: string
+			indexing: string
+			forceRebuild: string
+			noModelsAvailable: string
+		}
+		hotkeys: {
+			title: string
+			description: string
+			categories: {
+				file: string
+				view: string
+				history: string
+				app: string
+			}
+			actions: Record<AppHotkeyActionId, string>
+			restoreDefault: string
+			recordShortcut: string
+			cancelRecording: string
+			conflictWarning: string
+			unassigned: string
+		}
+		apiMcp: {
+			title: string
+			description: string
+			serverToggle: string
+			authToken: string
+			authTokenDesc: string
+			regenerate: string
+			availableRest: string
+			availableRestDesc: string
+			availableMcp: string
+			availableMcpDesc: string
+			clientGuides: string
+			clientGuidesDesc: string
+		}
+	}
+	explorer: {
+		search: string
+		toggle: string
+		settings: string
+		graphView: string
+		collapse: string
+		openFolder: string
+		removeWorkspace: string
+		feedback: string
+		feedbackEmail: string
+		feedbackMessage: string
+		feedbackScreenshot: string
+		feedbackCapture: string
+		feedbackSend: string
+		feedbackSending: string
+		feedbackSent: string
+		feedbackError: string
+		updateNow: string
+		unpinFolder: string
+		syncStatus: {
+			synced: string
+			unsynced: string
+			syncing: string
+			error: string
+			gitSync: string
+			retry: string
+			settings: string
+		}
+	}
+	collection: {
+		newNote: string
+		sortBy: string
+		sortSelectAria: string
+		sortLabels: {
+			name: string
+			createdAt: string
+			modifiedAt: string
+		}
+		directions: {
+			newest: string
+			oldest: string
+			az: string
+			za: string
+			ascending: string
+			descending: string
+		}
+	}
+	contextMenu: {
+		revealInFinder: string
+		revealInExplorer: string
+		revealInFileManager: string
+		openInNewTab: string
+		saveAsTemplate: string
+		templateSaved: string
+		templateFailed: string
+		renameWithAi: string
+		moveToFolderWithAi: string
+		editImage: string
+		rename: string
+		copy: string
+		paste: string
+		delete: string
+		newNote: string
+		newNoteFromTemplate: string
+		noTemplates: string
+		newFolder: string
+		pin: string
+		unpin: string
+	}
+	commandMenu: {
+		placeholder: string
+		noResults: string
+		notes: string
+		recentNotes: string
+		tagMatches: string
+		suggestions: string
+		contentMatches: string
+		emptyLine: string
+	}
+	editor: {
+		noteInfo: string
+		characters: string
+		words: string
+		readingTime: string
+		minutes: string
+		backlinks: string
+		relatedNotes: string
+		closeTab: string
+		goBack: string
+		goForward: string
+		back: string
+		forward: string
+	}
+	graphView: {
+		title: string
+		stats: string
+		failed: string
+		empty: string
+		tryAgain: string
+	}
+	chat: {
+		newChat: string
+		noMessages: string
+		startConversation: string
+		aiSettings: string
+		askAssistant: string
+		model: string
+	}
+	image: {
+		editTitle: string
+		name: string
+		dimensions: string
+		size: string
+		resize: string
+		aspectRatio: string
+		locked: string
+		format: string
+		keepOriginal: string
+		quality: string
+		saveCopy: string
+		createNewFile: string
+		done: string
+		processing: string
+		success: string
+		failed: string
+		loadFailed: string
+	}
+	quickNote: {
+		pinWindow: string
+		unpinWindow: string
+	}
+	windowMenu: {
+		services: string
+		hide: string
+		hideOthers: string
+		quit: string
+		file: string
+		newNote: string
+		openFolder: string
+		closeTab: string
+		closeWindow: string
+		edit: string
+		undo: string
+		redo: string
+		cut: string
+		copy: string
+		paste: string
+		selectAll: string
+		view: string
+		commandMenu: string
+		graphView: string
+		toggleFileExplorer: string
+		toggleCollectionView: string
+		toggleChatPanel: string
+		zoomIn: string
+		zoomOut: string
+		resetZoom: string
+		history: string
+		back: string
+		forward: string
+		window: string
+		previousTab: string
+		nextTab: string
+		minimize: string
+		maximize: string
+		fullscreen: string
+		settings: string
+		help: string
+	}
+	systemTray: {
+		quickNote: string
+		quit: string
+	}
+	aiAgent: {
+		renamed: string
+		moved: string
+		unchanged: string
+		failed: string
+		emptyRename: string
+		emptyMove: string
+		from: string
+		undo: string
+		done: string
+		renameFailed: string
+		moveFailed: string
+		renameSummary: string
+		moveSummary: string
+	}
+	errorBoundary: {
+		title: string
+		description: string
+		sendReport: string
+		sending: string
+		sent: string
+		reloadApp: string
+		sentSuccess: string
+		footerNote: string
+	}
+}

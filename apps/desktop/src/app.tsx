@@ -1,0 +1,128 @@
+import { getCurrentWindow } from "@tauri-apps/api/window"
+import { useEffect } from "react"
+import { useShallow } from "zustand/shallow"
+import { useStore } from "@/store"
+import { ChatPanel } from "./components/chat/chat-panel"
+import { CollectionView } from "./components/collection-view/collection-view"
+import { CommandMenu } from "./components/command-menu/command-menu"
+import { Editor } from "./components/editor/editor"
+import { FileExplorer } from "./components/file-explorer/file-explorer"
+import { GraphViewDialog } from "./components/graph-view/graph-view-dialog"
+import { ImageEditDialog } from "./components/image/image-edit-dialog"
+import { ImagePreviewDialog } from "./components/image/image-preview-dialog"
+import { SettingsDialog } from "./components/settings"
+import { Welcome } from "./components/welcome/welcome"
+import { ScreenCaptureProvider } from "./contexts/screen-capture-context"
+import { useAutoIndexing } from "./hooks/use-auto-indexing"
+import { useFontScale } from "./hooks/use-font-scale"
+import { useGitSync } from "./hooks/use-git-sync"
+import { useStoreRuntimeLifecycle } from "./hooks/use-store-runtime-lifecycle"
+import { useWorkspaceLifecycle } from "./hooks/use-workspace-lifecycle"
+import { startLocalApiServer, stopLocalApiServer } from "./lib/local-api"
+import { shouldRunLocalApiServer } from "./lib/local-api-runtime"
+import { isLinux, isWindows10 } from "./utils/platform"
+
+export function App() {
+	const { workspacePath, isLoading, localApiEnabled, setLocalApiError } =
+		useStore(
+			useShallow((s) => ({
+				workspacePath: s.workspacePath,
+				isLoading: s.isLoading,
+				localApiEnabled: s.localApiEnabled,
+				setLocalApiError: s.setLocalApiError,
+			})),
+		)
+	useFontScale()
+	useWorkspaceLifecycle()
+	useStoreRuntimeLifecycle()
+	useAutoIndexing(workspacePath)
+	useGitSync(workspacePath)
+
+	const mutedBgClass = isWindows10() || isLinux() ? "bg-muted" : "bg-muted/70"
+
+	useEffect(() => {
+		const appWindow = getCurrentWindow()
+		const closeListener = appWindow.listen(
+			"tauri://close-requested",
+			async () => {
+				const isFullscreen = await appWindow.isFullscreen()
+				if (isFullscreen) {
+					await appWindow.setFullscreen(false)
+					await new Promise((resolve) => setTimeout(resolve, 700))
+				}
+				appWindow.hide()
+			},
+		)
+
+		return () => {
+			closeListener.then((unlisten) => unlisten())
+		}
+	}, [])
+
+	useEffect(() => {
+		let isActive = true
+		const shouldRunLocalApi = shouldRunLocalApiServer(localApiEnabled)
+		const setLocalApiErrorIfActive = (errorMessage: string | null) => {
+			if (!isActive) {
+				return
+			}
+			setLocalApiError(errorMessage)
+		}
+
+		const syncLocalApiServerState = async () => {
+			try {
+				if (shouldRunLocalApi) {
+					await startLocalApiServer()
+				} else {
+					await stopLocalApiServer()
+				}
+				setLocalApiErrorIfActive(null)
+			} catch (error) {
+				const action = shouldRunLocalApi ? "start" : "stop"
+				const message =
+					error instanceof Error ? error.message : String(error ?? "Unknown")
+				setLocalApiErrorIfActive(
+					`Failed to ${action} local API server: ${message}`,
+				)
+			}
+		}
+
+		void syncLocalApiServerState()
+
+		return () => {
+			isActive = false
+		}
+	}, [localApiEnabled, setLocalApiError])
+
+	if (isLoading) {
+		return <div className={`h-screen ${mutedBgClass}`} />
+	}
+
+	if (!workspacePath) {
+		return (
+			<div className={mutedBgClass}>
+				<Welcome />
+			</div>
+		)
+	}
+
+	return (
+		<ScreenCaptureProvider>
+			<div className={`h-screen flex flex-col ${mutedBgClass}`}>
+				<div className="flex-1 overflow-hidden flex">
+					<div className="group/side flex">
+						<FileExplorer />
+						<CollectionView />
+					</div>
+					<Editor />
+					<ChatPanel />
+				</div>
+			</div>
+			<SettingsDialog />
+			<CommandMenu />
+			<GraphViewDialog />
+			<ImagePreviewDialog />
+			<ImageEditDialog />
+		</ScreenCaptureProvider>
+	)
+}

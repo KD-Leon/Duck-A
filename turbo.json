@@ -1,0 +1,42 @@
+{
+	"$schema": "https://turborepo.dev/schema.json",
+	"remoteCache": {
+		"enabled": true
+	},
+	"globalDependencies": [
+		"pnpm-lock.yaml",
+		"pnpm-workspace.yaml",
+		"biome.jsonc"
+	],
+	"tasks": {
+		"build": {
+			"dependsOn": ["ts:check"],
+			"outputs": ["dist/**", ".output/**", ".tanstack/**"]
+		},
+		"ts:check": {
+			"dependsOn": ["^ts:check"],
+			"outputs": []
+		},
+		"test": {
+			"dependsOn": ["test:storybook"],
+			"outputs": []
+		},
+		"test:storybook": {
+			"outputs": []
+		},
+		"check:rust": {
+			"cache": false
+		},
+		"test:rust": {
+			"cache": false
+		},
+		"dev": {
+			"cache": false,
+			"persistent": true
+		},
+		"tauri:dev": {
+			"cache": false,
+			"persistent": true
+		}
+	}
+}

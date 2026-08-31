@@ -1,0 +1,32 @@
+{
+	"include": [
+		"src/**/*.ts",
+		"src/**/*.tsx",
+		".content-collections/generated/**/*.d.ts",
+		"content-collections.ts",
+		"app.config.ts",
+		"vite.config.ts"
+	],
+	"compilerOptions": {
+		"strict": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"jsx": "react-jsx",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"lib": ["DOM", "DOM.Iterable", "ES2022"],
+		"isolatedModules": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"target": "ES2022",
+		"allowJs": true,
+		"forceConsistentCasingInFileNames": true,
+		"paths": {
+			"~/*": ["./src/*"],
+			"content-collections": ["./.content-collections/generated"]
+		},
+		"types": ["./worker-configuration.d.ts", "node", "vite/client"],
+		"noEmit": true
+	},
+	"exclude": ["dist", ".output", ".tanstack"]
+}

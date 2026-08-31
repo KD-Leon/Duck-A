@@ -1,0 +1,21 @@
+{
+	"name": "@mdit/local-fs-origin",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"test": "vitest run",
+		"ts:check": "tsgo --noEmit"
+	},
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"pathe": "^2.0.3"
+	},
+	"devDependencies": {
+		"@mdit/tsconfig": "workspace:*",
+		"@typescript/native-preview": "catalog:",
+		"vitest": "catalog:"
+	}
+}

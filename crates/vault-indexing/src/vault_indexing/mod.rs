@@ -1,0 +1,1080 @@
+//! Indexing pipeline for Markdown files inside a workspace directory.
+//!
+//! The overall flow is:
+//! 1. `index_vault_documents` prepares the SQLite database, collects Markdown files,
+//!    and orchestrates synchronization for every document.
+//! 2. New or changed documents are chunked based on the requested chunking
+//!    version, persisted as `segment` rows, and receive fresh embeddings.
+//! 3. Deleted documents and surplus segments are removed to keep the database
+//!    tidy while the `IndexSummary` keeps track of everything that happened.
+
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsStr,
+    fs,
+    path::{Component, Path, PathBuf},
+};
+
+use anyhow::{anyhow, Context, Result};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::Serialize;
+use vault_indexing_api::VaultIndexingRuntime;
+use walkdir::WalkDir;
+
+mod chunking;
+mod embedding;
+mod files;
+mod links;
+mod search;
+mod sync;
+mod tags;
+
+use embedding::{resolve_embedding_dimension, EmbeddingClient};
+use files::collect_markdown_files;
+use links::resolve_wiki_link_target;
+pub use search::{search_notes_by_tag, search_notes_for_query, SemanticNoteEntry, TagNoteEntry};
+use sync::{
+    clear_segment_vectors_for_vault, sync_documents_with_prune, sync_embeddings_for_prepared,
+};
+pub use vault_indexing_api::{BacklinkEntry, ResolveWikiLinkRequest, ResolveWikiLinkResult};
+
+const TARGET_CHUNKING_VERSION: i64 = 1;
+const SEGMENT_VEC_TABLE: &str = "segment_vec";
+const MIN_RELATED_NOTE_SCORE: f32 = 0.4;
+
+/// Human readable summary of what happened during an indexing run.
+#[derive(Debug, Default, Serialize)]
+pub struct IndexSummary {
+    /// Total Markdown files found in the workspace walk.
+    pub files_discovered: usize,
+    /// Files that were successfully processed (even if nothing changed).
+    pub files_processed: usize,
+    /// Newly inserted `doc` rows.
+    pub docs_inserted: usize,
+    /// `doc` rows that were deleted because the file disappeared or
+    /// a forced re-index was requested.
+    pub docs_deleted: usize,
+    /// New `segment` rows created while chunking documents.
+    pub segments_created: usize,
+    /// Existing segments whose content hash changed.
+    pub segments_updated: usize,
+    /// Number of embeddings written or refreshed.
+    pub embeddings_written: usize,
+    /// Links written or refreshed.
+    pub links_written: usize,
+    /// Links deleted before refresh.
+    pub links_deleted: usize,
+    /// Detailed per-file errors that prevented indexing.
+    pub skipped_files: Vec<String>,
+}
+
+/// Lightweight metadata returned for quick status checks.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexingMeta {
+    pub indexed_doc_count: usize,
+}
+
+pub(crate) struct EmbeddingContext {
+    pub(crate) embedder: EmbeddingClient,
+    pub(crate) target_dim: i32,
+}
+
+fn open_indexing_connection(db_path: &Path) -> Result<Connection> {
+    app_storage::sqlite_ext::register_auto_extension()?;
+
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("Failed to open indexing database at {}", db_path.display()))?;
+
+    conn.pragma_update(None, "foreign_keys", 1)
+        .context("Failed to enable foreign keys for indexing database")?;
+
+    Ok(conn)
+}
+
+fn create_embedding_context(
+    embedding_provider: &str,
+    embedding_model: &str,
+) -> Result<Option<EmbeddingContext>> {
+    let has_embedding_config =
+        !embedding_provider.trim().is_empty() && !embedding_model.trim().is_empty();
+
+    if !has_embedding_config {
+        return Ok(None);
+    }
+
+    // Resolve embedding dimension by generating a test embedding.
+    let target_dim = resolve_embedding_dimension(embedding_provider, embedding_model)?;
+
+    if target_dim <= 0 {
+        return Err(anyhow!(
+            "Target embedding dimension must be positive (received {})",
+            target_dim
+        ));
+    }
+
+    // Embedder handles communication with the chosen vector backend.
+    let embedder = EmbeddingClient::new(embedding_provider, embedding_model)?;
+    Ok(Some(EmbeddingContext {
+        embedder,
+        target_dim,
+    }))
+}
+
+fn canonicalize_workspace_root(workspace_root: &Path) -> Result<PathBuf> {
+    if !workspace_root.exists() {
+        return Err(anyhow!(
+            "Workspace path does not exist: {}",
+            workspace_root.display()
+        ));
+    }
+
+    fs::canonicalize(workspace_root).with_context(|| {
+        format!(
+            "Failed to canonicalize workspace path {}",
+            workspace_root.display()
+        )
+    })
+}
+
+fn is_markdown_or_mdx(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(OsStr::to_str),
+        Some(ext) if ext.eq_ignore_ascii_case("md") || ext.eq_ignore_ascii_case("mdx")
+    )
+}
+
+fn collect_workspace_rel_paths_for_wiki_resolution(workspace_root: &Path) -> Result<Vec<String>> {
+    let mut rel_paths = Vec::new();
+
+    for entry in WalkDir::new(workspace_root).follow_links(false) {
+        let entry = entry.with_context(|| "Failed to traverse workspace for wiki resolution")?;
+        if entry.file_type().is_dir() || !is_markdown_or_mdx(entry.path()) {
+            continue;
+        }
+
+        let rel = entry.path().strip_prefix(workspace_root).with_context(|| {
+            format!(
+                "Failed to compute relative path for {}",
+                entry.path().display()
+            )
+        })?;
+        rel_paths.push(files::normalize_rel_path(rel));
+    }
+
+    rel_paths.sort();
+    Ok(rel_paths)
+}
+
+fn sanitize_workspace_rel_path(path: &str) -> Option<String> {
+    let normalized = path.replace('\\', "/").trim().to_string();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let normalized = normalized.trim_start_matches('/').to_string();
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let mut rebuilt = PathBuf::new();
+    for component in Path::new(&normalized).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(value) => rebuilt.push(value),
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+
+    if rebuilt.as_os_str().is_empty() {
+        return None;
+    }
+
+    Some(files::normalize_rel_path(&rebuilt))
+}
+
+fn sanitize_workspace_rel_paths(paths: Vec<String>) -> Vec<String> {
+    let mut sanitized = paths
+        .into_iter()
+        .filter_map(|path| sanitize_workspace_rel_path(&path))
+        .collect::<Vec<_>>();
+    sanitized.sort();
+    sanitized.dedup();
+    sanitized
+}
+
+pub(super) fn find_vault_id(conn: &Connection, workspace_root: &Path) -> Result<Option<i64>> {
+    app_storage::vault::find_workspace_id(conn, workspace_root)
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct VaultIndexingRuntimeAdapter;
+
+impl VaultIndexingRuntime for VaultIndexingRuntimeAdapter {
+    fn index_vault_documents(&self, workspace_root: &Path, db_path: &Path) -> Result<()> {
+        crate::vault_indexing::index_vault_documents(workspace_root, db_path, "", "", false)
+            .map(|_| ())
+    }
+
+    fn index_note(&self, workspace_root: &Path, db_path: &Path, note_path: &Path) -> Result<()> {
+        crate::vault_indexing::index_note(workspace_root, db_path, note_path, "", "").map(|_| ())
+    }
+
+    fn delete_indexed_note(
+        &self,
+        workspace_root: &Path,
+        db_path: &Path,
+        note_path: &Path,
+    ) -> Result<()> {
+        crate::vault_indexing::delete_indexed_note(workspace_root, db_path, note_path).map(|_| ())
+    }
+
+    fn delete_indexed_notes_by_prefix(
+        &self,
+        workspace_root: &Path,
+        db_path: &Path,
+        path_prefix: &Path,
+    ) -> Result<()> {
+        crate::vault_indexing::delete_indexed_notes_by_prefix(workspace_root, db_path, path_prefix)
+            .map(|_| ())
+    }
+
+    fn rename_indexed_note(
+        &self,
+        workspace_root: &Path,
+        db_path: &Path,
+        old_note_path: &Path,
+        new_note_path: &Path,
+    ) -> Result<()> {
+        crate::vault_indexing::rename_indexed_note(
+            workspace_root,
+            db_path,
+            old_note_path,
+            new_note_path,
+        )
+        .map(|_| ())
+    }
+
+    fn get_backlinks(
+        &self,
+        workspace_root: &Path,
+        db_path: &Path,
+        file_path: &Path,
+    ) -> Result<Vec<BacklinkEntry>> {
+        crate::vault_indexing::get_backlinks(workspace_root, db_path, file_path)
+    }
+
+    fn resolve_wiki_link(&self, request: ResolveWikiLinkRequest) -> Result<ResolveWikiLinkResult> {
+        crate::vault_indexing::resolve_wiki_link(request)
+    }
+}
+
+pub fn index_vault_documents(
+    workspace_root: &Path,
+    db_path: &Path,
+    embedding_provider: &str,
+    embedding_model: &str,
+    force_reindex: bool,
+) -> Result<IndexSummary> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let markdown_files = collect_markdown_files(workspace_root)?;
+    run_indexing_for_files(
+        workspace_root,
+        db_path,
+        embedding_provider,
+        embedding_model,
+        markdown_files,
+        true,
+        force_reindex,
+    )
+}
+
+pub fn refresh_workspace_embeddings(
+    workspace_root: &Path,
+    db_path: &Path,
+    embedding_provider: &str,
+    embedding_model: &str,
+) -> Result<IndexSummary> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let files = collect_markdown_files(workspace_root)?;
+    run_embedding_refresh_for_files(
+        workspace_root,
+        db_path,
+        embedding_provider,
+        embedding_model,
+        files,
+    )
+}
+
+fn is_markdown_path(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some(ext) if ext.eq_ignore_ascii_case("md")
+    )
+}
+
+fn build_single_markdown_file(
+    workspace_root: &Path,
+    note_path: &Path,
+) -> Result<files::MarkdownFile> {
+    if !is_markdown_path(note_path) {
+        return Err(anyhow!(
+            "Note path must point to a markdown file (.md): {}",
+            note_path.display()
+        ));
+    }
+
+    let workspace_canonical = canonicalize_workspace_root(workspace_root)?;
+    let note_canonical = fs::canonicalize(note_path)
+        .with_context(|| format!("Failed to canonicalize note path {}", note_path.display()))?;
+
+    if !note_canonical.is_file() {
+        return Err(anyhow!("Note path is not a file: {}", note_path.display()));
+    }
+
+    let rel_path = note_canonical
+        .strip_prefix(&workspace_canonical)
+        .map_err(|_| anyhow!("Note path is outside workspace: {}", note_path.display()))?;
+    let rel_path = files::normalize_rel_path(rel_path);
+    Ok(files::MarkdownFile::from_abs_and_rel(
+        note_canonical,
+        rel_path,
+    ))
+}
+
+fn to_workspace_rel_markdown_path(workspace_root: &Path, note_path: &Path) -> Result<String> {
+    if !is_markdown_path(note_path) {
+        return Err(anyhow!(
+            "Note path must point to a markdown file (.md): {}",
+            note_path.display()
+        ));
+    }
+
+    let candidate_abs = if note_path.is_absolute() {
+        note_path.to_path_buf()
+    } else {
+        workspace_root.join(note_path)
+    };
+
+    if let Ok(rel_path) = candidate_abs.strip_prefix(workspace_root) {
+        return Ok(files::normalize_rel_path(rel_path));
+    }
+
+    let workspace_canonical = canonicalize_workspace_root(workspace_root)?;
+    if let Ok(rel_path) = candidate_abs.strip_prefix(&workspace_canonical) {
+        return Ok(files::normalize_rel_path(rel_path));
+    }
+
+    Err(anyhow!(
+        "Note path is outside workspace: {}",
+        note_path.display()
+    ))
+}
+
+fn to_workspace_rel_path_prefix(workspace_root: &Path, path_prefix: &Path) -> Result<String> {
+    let candidate_abs = if path_prefix.is_absolute() {
+        path_prefix.to_path_buf()
+    } else {
+        workspace_root.join(path_prefix)
+    };
+
+    let normalized = if let Ok(rel_path) = candidate_abs.strip_prefix(workspace_root) {
+        files::normalize_rel_path(rel_path)
+    } else {
+        let workspace_canonical = canonicalize_workspace_root(workspace_root)?;
+        if let Ok(rel_path) = candidate_abs.strip_prefix(&workspace_canonical) {
+            files::normalize_rel_path(rel_path)
+        } else {
+            return Err(anyhow!(
+                "Path prefix is outside workspace: {}",
+                path_prefix.display()
+            ));
+        }
+    };
+
+    let normalized = normalized.trim_end_matches('/').to_string();
+    if normalized.is_empty() || normalized == "." {
+        return Err(anyhow!(
+            "Path prefix must not resolve to workspace root: {}",
+            path_prefix.display()
+        ));
+    }
+
+    Ok(normalized)
+}
+
+fn escape_sql_like_pattern(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '%' | '_' | '\\' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+fn run_indexing_for_files(
+    workspace_root: &Path,
+    db_path: &Path,
+    embedding_provider: &str,
+    embedding_model: &str,
+    files: Vec<files::MarkdownFile>,
+    prune_deleted_docs: bool,
+    force_reindex: bool,
+) -> Result<IndexSummary> {
+    let embedding_context = create_embedding_context(embedding_provider, embedding_model)?;
+    let mut conn = open_indexing_connection(db_path)?;
+    let vault_id = app_storage::vault::ensure_workspace_exists(&conn, workspace_root)?;
+
+    // Force reindex wipes doc/segment tables so they can be recreated cleanly.
+    let reset_deleted = if force_reindex {
+        if embedding_context.is_some() {
+            clear_segment_vectors_for_vault(&conn, vault_id)?;
+        }
+        clear_index(&conn, vault_id)?
+    } else {
+        0
+    };
+
+    let mut summary = IndexSummary {
+        files_discovered: files.len(),
+        docs_deleted: reset_deleted,
+        ..Default::default()
+    };
+
+    let prepared_documents = sync_documents_with_prune(
+        &mut conn,
+        workspace_root,
+        vault_id,
+        files,
+        embedding_context.as_ref(),
+        &mut summary,
+        prune_deleted_docs,
+    )?;
+
+    if let Some(embedding_context) = embedding_context.as_ref() {
+        sync_embeddings_for_prepared(
+            &mut conn,
+            vault_id,
+            &prepared_documents,
+            embedding_context,
+            &mut summary,
+            false,
+        )?;
+    }
+
+    Ok(summary)
+}
+
+fn run_embedding_refresh_for_files(
+    workspace_root: &Path,
+    db_path: &Path,
+    embedding_provider: &str,
+    embedding_model: &str,
+    files: Vec<files::MarkdownFile>,
+) -> Result<IndexSummary> {
+    let embedding_context = create_embedding_context(embedding_provider, embedding_model)?;
+    let mut summary = IndexSummary {
+        files_discovered: files.len(),
+        ..Default::default()
+    };
+
+    let Some(embedding_context) = embedding_context.as_ref() else {
+        return Ok(summary);
+    };
+
+    let mut prepared_documents = Vec::with_capacity(files.len());
+    for file in files {
+        let abs_path = file.abs_path.clone();
+        match sync::PreparedDocument::load(file) {
+            Ok(prepared) => prepared_documents.push(prepared),
+            Err(error) => {
+                summary
+                    .skipped_files
+                    .push(format!("{}: {}", abs_path.display(), error));
+            }
+        }
+    }
+
+    let mut conn = open_indexing_connection(db_path)?;
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(summary);
+    };
+
+    sync_embeddings_for_prepared(
+        &mut conn,
+        vault_id,
+        &prepared_documents,
+        embedding_context,
+        &mut summary,
+        true,
+    )?;
+
+    Ok(summary)
+}
+
+pub fn index_note(
+    workspace_root: &Path,
+    db_path: &Path,
+    note_path: &Path,
+    embedding_provider: &str,
+    embedding_model: &str,
+) -> Result<IndexSummary> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let file = build_single_markdown_file(workspace_root, note_path)?;
+    run_indexing_for_files(
+        workspace_root,
+        db_path,
+        embedding_provider,
+        embedding_model,
+        vec![file],
+        false,
+        false,
+    )
+}
+
+pub fn delete_indexed_note(
+    workspace_root: &Path,
+    db_path: &Path,
+    note_path: &Path,
+) -> Result<bool> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let rel_path = to_workspace_rel_markdown_path(workspace_root, note_path)?;
+
+    let conn = open_indexing_connection(db_path)?;
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(false);
+    };
+
+    let deleted = conn
+        .execute(
+            "DELETE FROM doc WHERE vault_id = ?1 AND rel_path = ?2",
+            params![vault_id, &rel_path],
+        )
+        .context("Failed to delete indexed note document row")?;
+
+    Ok(deleted > 0)
+}
+
+pub fn delete_indexed_notes_by_prefix(
+    workspace_root: &Path,
+    db_path: &Path,
+    path_prefix: &Path,
+) -> Result<usize> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let rel_prefix = to_workspace_rel_path_prefix(workspace_root, path_prefix)?;
+    let escaped_prefix = escape_sql_like_pattern(&rel_prefix);
+    let like_pattern = format!("{escaped_prefix}/%");
+
+    let conn = open_indexing_connection(db_path)?;
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(0);
+    };
+
+    let deleted = conn
+        .execute(
+            "DELETE FROM doc WHERE vault_id = ?1 AND rel_path LIKE ?2 ESCAPE '\\'",
+            params![vault_id, like_pattern],
+        )
+        .context("Failed to delete indexed notes by path prefix")?;
+
+    Ok(deleted)
+}
+
+pub fn rename_indexed_note(
+    workspace_root: &Path,
+    db_path: &Path,
+    old_note_path: &Path,
+    new_note_path: &Path,
+) -> Result<bool> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let old_rel_path = to_workspace_rel_markdown_path(workspace_root, old_note_path)?;
+    let new_rel_path = to_workspace_rel_markdown_path(workspace_root, new_note_path)?;
+
+    if old_rel_path == new_rel_path {
+        return Ok(false);
+    }
+
+    let mut conn = open_indexing_connection(db_path)?;
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(false);
+    };
+
+    let tx = conn
+        .transaction()
+        .context("Failed to start transaction for indexed note rename")?;
+
+    let Some(old_doc_id) = tx
+        .query_row(
+            "SELECT id FROM doc WHERE vault_id = ?1 AND rel_path = ?2",
+            params![vault_id, &old_rel_path],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .context("Failed to query old indexed note document row")?
+    else {
+        return Ok(false);
+    };
+
+    let new_doc_id: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM doc WHERE vault_id = ?1 AND rel_path = ?2",
+            params![vault_id, &new_rel_path],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .context("Failed to query new indexed note document row")?;
+
+    if let Some(new_doc_id) = new_doc_id {
+        if new_doc_id != old_doc_id {
+            return Err(anyhow!(
+                "Cannot rename indexed note to '{}' because a different indexed document already exists",
+                new_rel_path
+            ));
+        }
+    }
+
+    let updated = tx
+        .execute(
+            "UPDATE doc SET rel_path = ?1 WHERE id = ?2",
+            params![&new_rel_path, old_doc_id],
+        )
+        .context("Failed to update indexed note rel_path")?;
+
+    tx.commit()
+        .context("Failed to commit indexed note rename transaction")?;
+
+    Ok(updated > 0)
+}
+
+pub fn get_indexing_meta(workspace_root: &Path, db_path: &Path) -> Result<IndexingMeta> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let conn = open_indexing_connection(db_path)?;
+
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(IndexingMeta {
+            indexed_doc_count: 0,
+        });
+    };
+
+    Ok(IndexingMeta {
+        indexed_doc_count: count_indexed_docs(&conn, vault_id)?,
+    })
+}
+
+fn clear_index(conn: &Connection, vault_id: i64) -> Result<usize> {
+    let deleted_docs = conn
+        .execute("DELETE FROM doc WHERE vault_id = ?1", params![vault_id])
+        .context("Failed to clear documents for reindex")?;
+
+    Ok(deleted_docs as usize)
+}
+
+fn count_indexed_docs(conn: &Connection, vault_id: i64) -> Result<usize> {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM doc WHERE vault_id = ?1 AND last_hash IS NOT NULL",
+            params![vault_id],
+            |row| row.get(0),
+        )
+        .context("Failed to count indexed documents")?;
+
+    Ok(count as usize)
+}
+
+pub fn resolve_wiki_link(request: ResolveWikiLinkRequest) -> Result<ResolveWikiLinkResult> {
+    let workspace_root = canonicalize_workspace_root(Path::new(&request.workspace_path))?;
+
+    let rel_paths = match request.workspace_rel_paths {
+        Some(paths) if !paths.is_empty() => sanitize_workspace_rel_paths(paths),
+        _ => collect_workspace_rel_paths_for_wiki_resolution(&workspace_root)?,
+    };
+
+    let resolved = resolve_wiki_link_target(
+        &workspace_root,
+        request.current_note_path.as_deref(),
+        &request.raw_target,
+        &rel_paths,
+    );
+
+    Ok(ResolveWikiLinkResult {
+        canonical_target: resolved.canonical_target,
+        resolved_rel_path: resolved.resolved_rel_path,
+        match_count: resolved.match_count,
+        disambiguated: resolved.disambiguated,
+        unresolved: resolved.unresolved,
+    })
+}
+
+/// Represents a single related note entry ranked by vector similarity.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedNoteEntry {
+    /// Relative path from workspace root to the related document.
+    pub rel_path: String,
+    /// Filename without extension for display purposes.
+    pub file_name: String,
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphViewData {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNode {
+    pub id: String,
+    pub rel_path: String,
+    pub file_name: String,
+    pub unresolved: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphEdge {
+    pub source: String,
+    pub target: String,
+    pub unresolved: bool,
+}
+
+/// Get all documents that link to the specified document (backlinks).
+///
+/// Queries the link table for entries where the target is the given document.
+/// Returns a list of source documents with their relative paths and filenames.
+pub fn get_backlinks(
+    workspace_root: &Path,
+    db_path: &Path,
+    file_path: &Path,
+) -> Result<Vec<BacklinkEntry>> {
+    // Convert absolute file path to relative path.
+    let rel_path = file_path
+        .strip_prefix(workspace_root)
+        .with_context(|| {
+            format!(
+                "Failed to compute relative path for {} within workspace {}",
+                file_path.display(),
+                workspace_root.display()
+            )
+        })?
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let conn = open_indexing_connection(db_path)?;
+
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(Vec::new());
+    };
+
+    // Find the doc ID for the target file.
+    let target_doc_id: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM doc WHERE vault_id = ?1 AND rel_path = ?2",
+            params![vault_id, &rel_path],
+            |row| row.get(0),
+        )
+        .optional()
+        .context("Failed to query target document ID")?;
+
+    // Query for backlinks - documents that link to this one.
+    // We check both target_doc_id (for resolved links) and target_path (for unresolved).
+    let mut backlinks = Vec::new();
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT d.rel_path \
+         FROM ( \
+             SELECT source_doc_id \
+             FROM link \
+             WHERE target_doc_id = ?2 \
+             UNION ALL \
+             SELECT source_doc_id \
+             FROM link \
+             WHERE target_doc_id IS NULL AND target_path = ?3 \
+         ) l \
+         JOIN doc d ON d.id = l.source_doc_id \
+         WHERE d.vault_id = ?1 \
+         ORDER BY d.rel_path",
+        )
+        .context("Failed to prepare backlink query")?;
+
+    let rows = stmt
+        .query_map(params![vault_id, target_doc_id, &rel_path], |row| {
+            let rel_path: String = row.get(0)?;
+            // Extract filename without extension.
+            let file_name = std::path::Path::new(&rel_path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| rel_path.clone());
+
+            Ok(BacklinkEntry {
+                rel_path,
+                file_name,
+            })
+        })
+        .context("Failed to query backlinks")?;
+
+    for row in rows {
+        backlinks.push(row?);
+    }
+
+    Ok(backlinks)
+}
+
+/// Get semantically related documents using only existing indexed vectors.
+///
+/// This reuses persisted segment vectors and does not generate new embeddings.
+pub fn get_related_notes(
+    workspace_root: &Path,
+    db_path: &Path,
+    file_path: &Path,
+    limit: usize,
+) -> Result<Vec<RelatedNoteEntry>> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    let rel_path = file_path
+        .strip_prefix(workspace_root)
+        .map(files::normalize_rel_path)
+        .with_context(|| {
+            format!(
+                "Failed to compute relative path for {} within workspace {}",
+                file_path.display(),
+                workspace_root.display()
+            )
+        })?;
+
+    let conn = open_indexing_connection(db_path)?;
+    if !segment_vec_table_exists(&conn)? {
+        return Ok(Vec::new());
+    }
+
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(Vec::new());
+    };
+
+    let source_doc: Option<(i64, String, i32)> = conn
+        .query_row(
+            "SELECT id, last_embedding_model, last_embedding_dim \
+             FROM doc \
+             WHERE vault_id = ?1 AND rel_path = ?2 AND last_hash IS NOT NULL",
+            params![vault_id, &rel_path],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    row.get::<_, Option<i32>>(2)?.unwrap_or_default(),
+                ))
+            },
+        )
+        .optional()
+        .context("Failed to query source document for related note lookup")?;
+
+    let Some((source_doc_id, embedding_model, embedding_dim)) = source_doc else {
+        return Ok(Vec::new());
+    };
+
+    if embedding_model.trim().is_empty() || embedding_dim <= 0 {
+        return Ok(Vec::new());
+    }
+
+    let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+    let mut stmt = conn
+        .prepare(
+            "WITH source_segments AS ( \
+                 SELECT sv.embedding AS embedding \
+                 FROM segment s \
+                 JOIN segment_vec sv ON sv.rowid = s.id \
+                 WHERE s.doc_id = ?2 \
+                   AND length(sv.embedding) = (?4 * 4) \
+             ), \
+             candidate_scores AS ( \
+                 SELECT d.rel_path AS rel_path, \
+                        MAX(1.0 - vec_distance_cosine(ss.embedding, cv.embedding)) AS score \
+                 FROM doc d \
+                 JOIN segment cs ON cs.doc_id = d.id \
+                 JOIN segment_vec cv ON cv.rowid = cs.id \
+                 JOIN source_segments ss \
+                 WHERE d.vault_id = ?1 \
+                   AND d.id != ?2 \
+                   AND d.last_hash IS NOT NULL \
+                   AND d.last_embedding_model = ?3 \
+                   AND d.last_embedding_dim = ?4 \
+                   AND length(cv.embedding) = (?4 * 4) \
+                 GROUP BY d.id, d.rel_path \
+             ) \
+             SELECT rel_path \
+             FROM candidate_scores \
+             WHERE score IS NOT NULL \
+               AND score >= ?6 \
+             ORDER BY score DESC, rel_path ASC \
+             LIMIT ?5",
+        )
+        .context("Failed to prepare related notes query")?;
+
+    let rows = stmt
+        .query_map(
+            params![
+                vault_id,
+                source_doc_id,
+                embedding_model,
+                embedding_dim,
+                limit,
+                MIN_RELATED_NOTE_SCORE as f64
+            ],
+            |row| row.get::<_, String>(0),
+        )
+        .context("Failed to query related notes")?;
+
+    let mut related_notes = Vec::new();
+    for row in rows {
+        let rel_path = row?;
+        let file_name = graph_node_name(&rel_path);
+
+        related_notes.push(RelatedNoteEntry {
+            rel_path,
+            file_name,
+        });
+    }
+
+    Ok(related_notes)
+}
+
+fn segment_vec_table_exists(conn: &Connection) -> Result<bool> {
+    let exists: i64 = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            params![SEGMENT_VEC_TABLE],
+            |row| row.get(0),
+        )
+        .context("Failed to check segment_vec table existence")?;
+
+    Ok(exists != 0)
+}
+
+fn graph_node_name(rel_path: &str) -> String {
+    Path::new(rel_path)
+        .file_stem()
+        .map(|segment| segment.to_string_lossy().to_string())
+        .unwrap_or_else(|| rel_path.to_string())
+}
+
+pub fn get_graph_view_data(workspace_root: &Path, db_path: &Path) -> Result<GraphViewData> {
+    let _ = canonicalize_workspace_root(workspace_root)?;
+    let conn = open_indexing_connection(db_path)?;
+
+    let Some(vault_id) = find_vault_id(&conn, workspace_root)? else {
+        return Ok(GraphViewData::default());
+    };
+
+    let mut nodes = Vec::new();
+    let mut doc_node_id_by_doc_id: HashMap<i64, String> = HashMap::new();
+    let mut unresolved_node_id_by_target_path: HashMap<String, String> = HashMap::new();
+
+    let mut node_stmt = conn
+        .prepare(
+            "SELECT id, rel_path \
+             FROM doc \
+             WHERE vault_id = ?1 AND last_hash IS NOT NULL \
+             ORDER BY rel_path",
+        )
+        .context("Failed to prepare graph node query")?;
+
+    let node_rows = node_stmt
+        .query_map(params![vault_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .context("Failed to execute graph node query")?;
+
+    for row in node_rows {
+        let (doc_id, rel_path) = row?;
+        let node_id = format!("doc:{doc_id}");
+        doc_node_id_by_doc_id.insert(doc_id, node_id.clone());
+        nodes.push(GraphNode {
+            id: node_id,
+            rel_path: rel_path.clone(),
+            file_name: graph_node_name(&rel_path),
+            unresolved: false,
+        });
+    }
+
+    let mut edges = Vec::new();
+    let mut seen_edges: HashSet<(String, String)> = HashSet::new();
+
+    let mut edge_stmt = conn
+        .prepare(
+            "SELECT l.source_doc_id, td.id, l.target_path \
+             FROM link l \
+             JOIN doc sd ON sd.id = l.source_doc_id \
+             LEFT JOIN doc td \
+                    ON td.id = l.target_doc_id \
+                   AND td.vault_id = ?1 \
+                   AND td.last_hash IS NOT NULL \
+             WHERE sd.vault_id = ?1 \
+               AND sd.last_hash IS NOT NULL \
+             ORDER BY l.source_doc_id, l.target_path",
+        )
+        .context("Failed to prepare graph edge query")?;
+
+    let edge_rows = edge_stmt
+        .query_map(params![vault_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .context("Failed to execute graph edge query")?;
+
+    for row in edge_rows {
+        let (source_doc_id, target_indexed_doc_id, target_path) = row?;
+        let Some(source_node_id) = doc_node_id_by_doc_id.get(&source_doc_id).cloned() else {
+            continue;
+        };
+
+        let (target_node_id, unresolved) = if let Some(target_doc_id) = target_indexed_doc_id {
+            if let Some(target_node_id) = doc_node_id_by_doc_id.get(&target_doc_id).cloned() {
+                (target_node_id, false)
+            } else {
+                // A resolved target_doc_id from the query should exist in the node map.
+                // If not, skip the edge to keep node/edge data consistent.
+                continue;
+            }
+        } else {
+            let target_node_id = unresolved_node_id_by_target_path
+                .entry(target_path.clone())
+                .or_insert_with(|| {
+                    let id = format!("unresolved:{target_path}");
+                    nodes.push(GraphNode {
+                        id: id.clone(),
+                        rel_path: target_path.clone(),
+                        file_name: graph_node_name(&target_path),
+                        unresolved: true,
+                    });
+                    id
+                })
+                .clone();
+            (target_node_id, true)
+        };
+
+        if seen_edges.insert((source_node_id.clone(), target_node_id.clone())) {
+            edges.push(GraphEdge {
+                source: source_node_id,
+                target: target_node_id,
+                unresolved,
+            });
+        }
+    }
+
+    Ok(GraphViewData { nodes, edges })
+}
+
+#[cfg(test)]
+mod tests;

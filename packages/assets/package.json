@@ -1,0 +1,20 @@
+{
+	"name": "@mdit/assets",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"ts:check": "tsgo --noEmit"
+	},
+	"exports": {
+		".": "./index.ts"
+	},
+	"dependencies": {
+		"@mdit/tsconfig": "workspace:*",
+		"react": "catalog:"
+	},
+	"devDependencies": {
+		"@types/react": "catalog:",
+		"@typescript/native-preview": "catalog:"
+	}
+}
