@@ -72,6 +72,21 @@ export type {
 	WorkspaceIndexSummary,
 } from "./indexing/indexing-types"
 export type {
+	S3Config,
+	S3FsPort,
+	S3ObjectItem,
+	S3ProviderPreset,
+	S3SyncResult,
+	S3SyncSlice,
+	S3SyncSliceDependencies,
+	S3SyncState,
+	S3SyncStatus,
+} from "./s3-sync/s3-sync-slice"
+export {
+	DEFAULT_S3_CONFIG,
+	prepareS3SyncSlice,
+} from "./s3-sync/s3-sync-slice"
+export type {
 	OpenDocument,
 	OpenDocumentSnapshot,
 	PendingHistorySelectionRestoreResult,

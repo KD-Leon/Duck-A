@@ -36,6 +36,7 @@ export const en: Translations = {
 			ai: "AI",
 			"api-mcp": "MCP",
 			sync: "Sync",
+			"s3-storage": "S3 Storage",
 			indexing: "Indexing",
 			hotkeys: "Hotkeys",
 		},
@@ -143,6 +144,13 @@ export const en: Translations = {
 			commitMessageDesc:
 				"Custom commit message template. Leave empty to use the default message. You can use variables like {date} in the message.",
 			commitMessagePlaceholder: "Leave empty to use default message",
+		},
+		s3Storage: {
+			title: "S3 Object Storage & Sync",
+			description:
+				"Configure AWS S3, Cloudflare R2, MinIO and S3-compatible cloud storage for notes sync and backup",
+			noWorkspace:
+				"Please open a workspace to configure S3 storage and sync settings.",
 		},
 		indexing: {
 			title: "Indexing",

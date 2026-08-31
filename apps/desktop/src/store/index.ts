@@ -12,6 +12,7 @@ import type {
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { readTextFile, rename as renameFile } from "@tauri-apps/plugin-fs"
+import { fetch as tauriHttpFetch } from "@tauri-apps/plugin-http"
 import { toast } from "sonner"
 import {
 	deleteCredential,
@@ -29,6 +30,7 @@ import { createDesktopGitSyncCore } from "@/lib/git-sync"
 import { createAppDataHotkeyStorage } from "@/lib/hotkeys-storage"
 import { createTauriIndexingPort } from "@/lib/indexing"
 import { fetchOllamaModels } from "@/lib/ollama"
+import { createDesktopS3FsPort } from "@/lib/s3-fs"
 import { loadSettings, saveSettings } from "@/lib/workspace-settings"
 import { createTauriWorkspaceWatcher } from "@/lib/workspace-watch"
 import { FileSystemRepository } from "@/repositories/file-system-repository"
@@ -70,6 +72,12 @@ export const useStore = createMditStore({
 		loadSettings,
 		saveSettings,
 		createGitSyncCore: createDesktopGitSyncCore,
+	},
+	s3Sync: {
+		loadSettings,
+		saveSettings,
+		fsPort: createDesktopS3FsPort(),
+		fetchFn: tauriHttpFetch,
 	},
 	hotkeys: {
 		storage: createAppDataHotkeyStorage(),

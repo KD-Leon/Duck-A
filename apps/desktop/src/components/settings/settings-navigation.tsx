@@ -30,6 +30,7 @@ export function SettingsNavigation({
 		ai: t.settings.tabs.ai,
 		"api-mcp": t.settings.tabs["api-mcp"],
 		sync: t.settings.tabs.sync,
+		"s3-storage": t.settings.tabs["s3-storage"],
 		indexing: t.settings.tabs.indexing,
 		hotkeys: t.settings.tabs.hotkeys,
 	}

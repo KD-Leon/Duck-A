@@ -1,6 +1,7 @@
 import {
 	IconAdjustmentsHorizontal,
 	IconBrain,
+	IconCloud,
 	IconKeyboard,
 	IconPlugConnected,
 	IconRefresh,
@@ -28,7 +29,8 @@ export const SETTINGS_TAB_META: Record<
 	preferences: { label: "Preferences", icon: IconAdjustmentsHorizontal },
 	ai: { label: "AI", icon: IconBrain },
 	"api-mcp": { label: "MCP", icon: IconPlugConnected },
-	sync: { label: "Sync", icon: IconRefresh },
+	sync: { label: "Git Sync", icon: IconRefresh },
+	"s3-storage": { label: "S3 Storage", icon: IconCloud },
 	indexing: { label: "Indexing", icon: IconSearch },
 	hotkeys: { label: "Hotkeys", icon: IconKeyboard },
 }
@@ -42,7 +44,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 	{
 		id: "vault",
 		label: "Vault",
-		tabs: ["sync", "indexing"],
+		tabs: ["sync", "s3-storage", "indexing"],
 	},
 	{
 		id: "features",
@@ -51,7 +53,11 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
 	},
 ]
 
-const WORKSPACE_ONLY_TABS = new Set<SettingsTab>(["sync", "indexing"])
+const WORKSPACE_ONLY_TABS = new Set<SettingsTab>([
+	"sync",
+	"s3-storage",
+	"indexing",
+])
 
 export function isSettingsTabAvailable(
 	tab: SettingsTab,

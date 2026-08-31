@@ -36,6 +36,7 @@ export const zh: Translations = {
 			ai: "人工智能",
 			"api-mcp": "MCP",
 			sync: "Git 同步",
+			"s3-storage": "S3 存储",
 			indexing: "内容索引",
 			hotkeys: "快捷键",
 		},
@@ -142,6 +143,12 @@ export const zh: Translations = {
 			commitMessageDesc:
 				"自定义提交信息模板。留空则使用默认信息。支持在信息中使用 {date} 变量。",
 			commitMessagePlaceholder: "留空使用默认提交信息",
+		},
+		s3Storage: {
+			title: "S3 对象存储与云同步",
+			description:
+				"配置 AWS S3、Cloudflare R2、MinIO 等云端对象存储与双向数据同步",
+			noWorkspace: "请先打开一个工作区以配置 S3 同步与备份。",
 		},
 		indexing: {
 			title: "内容索引",

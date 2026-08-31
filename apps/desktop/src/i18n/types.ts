@@ -39,8 +39,14 @@ export interface Translations {
 			ai: string
 			"api-mcp": string
 			sync: string
+			"s3-storage": string
 			indexing: string
 			hotkeys: string
+		}
+		s3Storage: {
+			title: string
+			description: string
+			noWorkspace: string
 		}
 		preferences: {
 			title: string

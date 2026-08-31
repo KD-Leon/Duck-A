@@ -5,6 +5,7 @@ export type SettingsTab =
 	| "ai"
 	| "api-mcp"
 	| "sync"
+	| "s3-storage"
 	| "indexing"
 	| "hotkeys"
 

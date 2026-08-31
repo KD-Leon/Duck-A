@@ -34,6 +34,7 @@
 		"@mdit/git-sync": "workspace:*",
 		"@mdit/graph-view": "workspace:*",
 		"@mdit/local-fs-origin": "workspace:*",
+		"@mdit/s3-sync": "workspace:*",
 		"@mdit/store": "workspace:*",
 		"@mdit/ui": "workspace:*",
 		"@mdit/utils": "workspace:*",

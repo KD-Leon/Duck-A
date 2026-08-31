@@ -55,6 +55,18 @@ describe("createMditStore", () => {
 					sync: vi.fn().mockResolvedValue({ pulledChanges: false }),
 				}),
 			},
+			s3Sync: {
+				loadSettings: vi.fn().mockResolvedValue({}),
+				saveSettings: vi.fn().mockResolvedValue(undefined),
+				fsPort: {
+					readTextFile: vi.fn().mockResolvedValue(""),
+					writeTextFile: vi.fn().mockResolvedValue(undefined),
+					readBinaryFile: vi.fn().mockResolvedValue(new Uint8Array()),
+					writeBinaryFile: vi.fn().mockResolvedValue(undefined),
+					deleteFile: vi.fn().mockResolvedValue(undefined),
+					listAllFiles: vi.fn().mockResolvedValue([]),
+				},
+			},
 			hotkeys: {
 				storage: {
 					load: vi.fn().mockResolvedValue(null),

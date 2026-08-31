@@ -23,6 +23,11 @@ import {
 	type IndexingSliceDependencies,
 	prepareIndexingSlice,
 } from "./indexing/indexing-slice"
+import type { S3SyncSlice } from "./s3-sync/s3-sync-slice"
+import {
+	prepareS3SyncSlice,
+	type S3SyncSliceDependencies,
+} from "./s3-sync/s3-sync-slice"
 import type { TabSlice } from "./tab/tab-slice"
 import { prepareTabSlice, type TabSliceDependencies } from "./tab/tab-slice"
 import type { UISlice } from "./ui/ui-slice"
@@ -36,6 +41,7 @@ export type StoreState = WorkspaceSlice &
 	AISettingsSlice &
 	EditorSlice &
 	GitSyncSlice &
+	S3SyncSlice &
 	ImageEditSlice &
 	IndexingSlice &
 	HotkeysSlice &
@@ -44,6 +50,7 @@ export type StoreState = WorkspaceSlice &
 export type MditStoreDependencies = {
 	aiSettings: AISettingsSliceDependencies
 	gitSync: GitSyncSliceDependencies
+	s3Sync: S3SyncSliceDependencies
 	hotkeys: HotkeysSliceDependencies
 	indexing: IndexingSliceDependencies
 	tab: TabSliceDependencies
@@ -60,6 +67,7 @@ export const createMditStore = (
 	const createImageEditSlice = prepareImageEditSlice()
 	const createAISettingsSlice = prepareAISettingsSlice(dependencies.aiSettings)
 	const createGitSyncSlice = prepareGitSyncSlice(dependencies.gitSync)
+	const createS3SyncSlice = prepareS3SyncSlice(dependencies.s3Sync)
 	const createHotkeysSlice = prepareHotkeysSlice(dependencies.hotkeys)
 	const createIndexingSlice = prepareIndexingSlice(dependencies.indexing)
 	const createTabSlice = prepareTabSlice(dependencies.tab)
@@ -72,6 +80,7 @@ export const createMditStore = (
 		...createAISettingsSlice(...args),
 		...createEditorSlice(...args),
 		...createGitSyncSlice(...args),
+		...createS3SyncSlice(...args),
 		...createImageEditSlice(...args),
 		...createIndexingSlice(...args),
 		...createHotkeysSlice(...args),
