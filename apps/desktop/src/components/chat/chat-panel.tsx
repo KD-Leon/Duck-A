@@ -5,7 +5,6 @@ import {
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
-	SelectValue,
 } from "@mdit/ui/components/select"
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { fetch as tauriHttpFetch } from "@tauri-apps/plugin-http"
@@ -120,6 +119,16 @@ function ChatPanelContent() {
 		return toModelSelectValue(chatConfig.provider, chatConfig.model)
 	}, [chatConfig, enabledChatModels])
 
+	const currentModelDisplayName = useMemo(() => {
+		if (!chatConfig) return undefined
+		const match = enabledChatModels.find(
+			(item) =>
+				item.provider === chatConfig.provider &&
+				item.model === chatConfig.model,
+		)
+		return match?.model ?? chatConfig.model
+	}, [chatConfig, enabledChatModels])
+
 	const panelChatToolDeps = useMemo(
 		() => ({
 			getActiveDocumentPath: () => useStore.getState().getActiveTabPath(),
@@ -218,8 +227,10 @@ function ChatPanelContent() {
 					}}
 					value={selectedModelValue}
 				>
-					<SelectTrigger className="h-7 w-[146px] rounded-sm text-xs">
-						<SelectValue placeholder={t.chat.model} />
+					<SelectTrigger className="h-7 min-w-[110px] max-w-[180px] rounded-sm text-xs px-2">
+						<span className="truncate">
+							{currentModelDisplayName ?? t.chat.model}
+						</span>
 					</SelectTrigger>
 					<SelectContent align="start">
 						{enabledChatModels.map((item) => {
