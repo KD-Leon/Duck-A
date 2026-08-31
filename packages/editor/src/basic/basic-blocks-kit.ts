@@ -86,6 +86,10 @@ export const BasicBlocksKit = [
 	}),
 	BlockquotePlugin.configure({
 		node: { component: BlockquoteElement },
+		rules: {
+			break: { empty: "reset" },
+			delete: { empty: "reset", start: "reset" },
+		},
 		shortcuts: { toggle: { keys: "mod+shift+period" } },
 	}),
 	HorizontalRulePlugin.withComponent(HrElement),

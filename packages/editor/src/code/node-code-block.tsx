@@ -45,27 +45,27 @@ export function CodeBlockElement(props: PlateElementProps<TCodeBlockElement>) {
 				</pre>
 
 				<div
-					className="absolute top-1 right-1 z-10 flex gap-0.5 select-none opacity-0 transition-opacity group-hover:opacity-100"
+					className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1 select-none opacity-0 transition-all duration-200 group-hover:opacity-100 bg-background/80 dark:bg-zinc-900/80 backdrop-blur-md border border-border/60 shadow-xs rounded-md px-1 py-0.5"
 					contentEditable={false}
 				>
 					{isLangSupported(element.lang) && (
 						<Button
 							size="icon"
 							variant="ghost"
-							className="size-6 text-xs"
+							className="size-6 text-xs text-muted-foreground hover:text-foreground rounded"
 							onClick={() => formatCodeBlock(editor, { element })}
 							title="Format code"
 						>
-							<BracesIcon className="size-3.5! text-muted-foreground" />
+							<BracesIcon className="size-3.5!" />
 						</Button>
 					)}
 
 					<CodeBlockCombobox />
 
 					<CopyButton
-						size="icon"
+						size="sm"
 						variant="ghost"
-						className="size-6 gap-1 text-xs text-muted-foreground"
+						className="h-6 px-1.5 gap-1 text-xs text-muted-foreground hover:text-foreground rounded font-sans"
 						value={() => {
 							if (!element.children || !Array.isArray(element.children)) {
 								return NodeApi.string(element)
@@ -107,7 +107,7 @@ function CodeBlockCombobox() {
 				<Button
 					size="sm"
 					variant="ghost"
-					className="h-6 justify-between gap-1 px-2 text-xs text-muted-foreground select-none"
+					className="h-6 justify-between gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground font-mono select-none rounded"
 					aria-expanded={open}
 					role="combobox"
 				>
@@ -129,7 +129,7 @@ function CodeBlockCombobox() {
 			>
 				<Command shouldFilter={false}>
 					<CommandInput
-						className="h-9"
+						className="h-9 text-xs"
 						value={searchValue}
 						onValueChange={(value) => setSearchValue(value)}
 						placeholder="Search language..."
@@ -141,7 +141,7 @@ function CodeBlockCombobox() {
 							{items.map((language) => (
 								<CommandItem
 									key={language.label}
-									className="cursor-pointer"
+									className="cursor-pointer text-xs"
 									value={language.value}
 									onSelect={(value) => {
 										if (isMermaidCodeBlockLanguage(value)) {
@@ -164,6 +164,7 @@ function CodeBlockCombobox() {
 								>
 									<Check
 										className={cn(
+											"size-3.5 mr-1.5",
 											value === language.value ? "opacity-100" : "opacity-0",
 										)}
 									/>
@@ -180,6 +181,7 @@ function CodeBlockCombobox() {
 
 function CopyButton({
 	value,
+	className,
 	...props
 }: { value: (() => string) | string } & Omit<
 	React.ComponentProps<typeof Button>,
@@ -189,9 +191,10 @@ function CopyButton({
 
 	useEffect(() => {
 		if (!hasCopied) return
-		setTimeout(() => {
+		const timer = setTimeout(() => {
 			setHasCopied(false)
 		}, 2000)
+		return () => clearTimeout(timer)
 	}, [hasCopied])
 
 	return (
@@ -202,13 +205,21 @@ function CopyButton({
 				)
 				setHasCopied(true)
 			}}
+			className={cn("transition-colors", className)}
 			{...props}
 		>
-			<span className="sr-only">Copy</span>
 			{hasCopied ? (
-				<CheckIcon className="size-3!" />
+				<>
+					<CheckIcon className="size-3! text-emerald-500" />
+					<span className="text-[11px] font-medium text-emerald-500">
+						Copied
+					</span>
+				</>
 			) : (
-				<CopyIcon className="size-3!" />
+				<>
+					<CopyIcon className="size-3!" />
+					<span className="text-[11px] font-medium">Copy</span>
+				</>
 			)}
 		</Button>
 	)

@@ -329,7 +329,7 @@ const InlineComboboxContent: typeof ComboboxPopover = ({
 		<Portal>
 			<ComboboxPopover
 				className={cn(
-					"z-500 max-h-[320px] w-[260px] overflow-y-auto rounded-xl bg-popover/95 backdrop-blur-md shadow-2xl shadow-black/10 dark:shadow-black/50 border border-border/70 p-1 outline-none",
+					"z-500 max-h-[320px] w-[280px] overflow-y-auto rounded-xl bg-popover/95 backdrop-blur-md shadow-2xl shadow-black/10 dark:shadow-black/50 border border-border/70 p-1 outline-none",
 					className,
 				)}
 				getAnchorRect={() => {

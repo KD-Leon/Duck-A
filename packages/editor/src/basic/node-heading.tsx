@@ -3,15 +3,15 @@ import { cva, type VariantProps } from "class-variance-authority"
 import type { PlateElementProps } from "platejs/react"
 import { PlateElement } from "platejs/react"
 
-const headingVariants = cva("relative mb-1", {
+const headingVariants = cva("relative", {
 	variants: {
 		variant: {
-			h1: "mt-[1.2em] pb-1 font-heading text-4xl font-bold",
-			h2: "mt-[1em] pb-px font-heading text-2xl font-semibold tracking-tight",
-			h3: "mt-[1em] pb-px font-heading text-xl font-semibold tracking-tight",
-			h4: "mt-[0.75em] font-heading text-lg font-semibold tracking-tight",
-			h5: "mt-[0.75em] text-lg font-semibold tracking-tight",
-			h6: "mt-[0.75em] text-base font-semibold tracking-tight",
+			h1: "mt-[1.4em] mb-[0.35em] pb-1 font-heading text-3xl sm:text-4xl font-bold tracking-tight text-foreground leading-[1.25]",
+			h2: "mt-[1.25em] mb-[0.3em] pb-px font-heading text-2xl font-semibold tracking-tight text-foreground leading-[1.3]",
+			h3: "mt-[1.1em] mb-[0.25em] pb-px font-heading text-xl font-semibold tracking-tight text-foreground leading-[1.35]",
+			h4: "mt-[0.9em] mb-[0.2em] font-heading text-lg font-semibold tracking-tight text-foreground leading-[1.4]",
+			h5: "mt-[0.8em] mb-[0.2em] text-base font-semibold tracking-tight text-foreground leading-[1.4]",
+			h6: "mt-[0.8em] mb-[0.2em] text-sm font-semibold tracking-tight text-muted-foreground leading-[1.4]",
 		},
 	},
 })

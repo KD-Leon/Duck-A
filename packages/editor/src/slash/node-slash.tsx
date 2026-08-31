@@ -81,6 +81,7 @@ type Group = {
 		keywords?: string[]
 		label?: string
 		description?: string
+		badge?: string
 	}[]
 }
 
@@ -93,7 +94,7 @@ function HeadingIcon({ level }: { level: 1 | 2 | 3 | 4 }) {
 	}
 
 	return (
-		<span className="inline-flex items-center justify-center font-semibold text-xs leading-none select-none tracking-tighter">
+		<span className="inline-flex items-center justify-center font-bold text-xs leading-none select-none tracking-tighter">
 			<span>H</span>
 			<span className="text-[11px] font-bold opacity-80">
 				{subscriptMap[level]}
@@ -112,6 +113,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					keywords: ["paragraph", "text", "p", "正文", "文本", "段落"],
 					label: "Text",
 					value: KEYS.p,
+					badge: "P",
 				},
 				{
 					icon: <HeadingIcon level={1} />,
@@ -127,6 +129,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "Heading 1",
 					value: KEYS.h1,
+					badge: "#",
 				},
 				{
 					icon: <HeadingIcon level={2} />,
@@ -142,36 +145,42 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "Heading 2",
 					value: KEYS.h2,
+					badge: "##",
 				},
 				{
 					icon: <HeadingIcon level={3} />,
 					keywords: ["h3", "heading 3", "3", "###", "三", "三级标题", "标题3"],
 					label: "Heading 3",
 					value: KEYS.h3,
+					badge: "###",
 				},
 				{
 					icon: <HeadingIcon level={4} />,
 					keywords: ["h4", "heading 4", "4", "####", "四", "四级标题", "标题4"],
 					label: "Heading 4",
 					value: KEYS.h4,
+					badge: "####",
 				},
 				{
 					icon: <Quote className="size-4" />,
 					keywords: ["citation", "blockquote", "quote", ">", "引用", "块引用"],
 					label: "Blockquote",
 					value: KEYS.blockquote,
+					badge: ">",
 				},
 				{
 					icon: <Code2 className="size-4" />,
 					keywords: ["```", "code", "codeblock", "代码", "代码块"],
 					label: "Code Block",
 					value: KEYS.codeBlock,
+					badge: "```",
 				},
 				{
 					icon: <List className="size-4" />,
 					keywords: ["unordered", "ul", "-", "*", "bullet", "列表", "无序列表"],
 					label: "Bullet List",
 					value: KEYS.ul,
+					badge: "-",
 				},
 				{
 					icon: <ListOrdered className="size-4" />,
@@ -186,6 +195,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "Ordered List",
 					value: KEYS.ol,
+					badge: "1.",
 				},
 				{
 					icon: <CheckSquare className="size-4" />,
@@ -201,8 +211,10 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "To-do List",
 					value: KEYS.listTodo,
+					badge: "[]",
 				},
 				{
+					description: "带背景与图标的高亮提示框",
 					icon: <LightbulbIcon className="size-4" />,
 					keywords: [
 						"note",
@@ -216,6 +228,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "Callout",
 					value: KEYS.callout,
+					badge: "[!",
 				},
 			].map((item) => ({
 				...item,
@@ -233,11 +246,13 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 			group: "AI",
 			items: [
 				{
+					description: "智能助手对话与内容润色",
 					focusEditor: false,
 					icon: <SparklesIcon className="size-4 text-purple-500" />,
 					keywords: ["ai", "chat", "assistant", "generate", "智能", "生成"],
 					label: "AI Assistant",
 					value: "AI",
+					badge: "⌘J",
 					onSelect: (editor) => {
 						editor.getApi(AIChatPlugin).aiChat.show()
 					},
@@ -252,6 +267,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					keywords: ["table", "grid", "表格"],
 					label: "Table",
 					value: KEYS.table,
+					badge: "3×3",
 					onSelect: (editor) => {
 						insertBlock(editor, KEYS.table)
 					},
@@ -270,11 +286,13 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "Math Equation",
 					value: KEYS.equation,
+					badge: "$$",
 					onSelect: (editor) => {
 						insertBlock(editor, KEYS.equation)
 					},
 				},
 				{
+					description: "Mermaid 流程图与图表绘图",
 					icon: <Code2 className="size-4" />,
 					keywords: [
 						"mermaid",
@@ -331,6 +349,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					keywords: ["emoji", "smile", "表情", "符号"],
 					label: "Emoji",
 					value: "emoji",
+					badge: ":",
 					onSelect: (editor: PlateEditor) => {
 						const emojiInputType = editor.getType(EmojiInputPlugin.key)
 						editor.tf.insertNodes({
@@ -345,6 +364,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					keywords: ["date", "time", "today", "now", "日期", "时间"],
 					label: "Date",
 					value: KEYS.date,
+					badge: "@",
 				},
 				{
 					focusEditor: false,
@@ -352,8 +372,10 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					keywords: ["inline math", "formula", "行内公式"],
 					label: "Inline Equation",
 					value: KEYS.inlineEquation,
+					badge: "$",
 				},
 				{
+					description: "双向链接引用站内笔记",
 					focusEditor: false,
 					icon: <FileText className="size-4" />,
 					keywords: [
@@ -367,6 +389,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "Wiki Link",
 					value: "wikiLink",
+					badge: "[[",
 					onSelect: (editor: PlateEditor) => {
 						editor.tf.insertNodes(
 							{
@@ -426,6 +449,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 			},
 			items: [
 				{
+					description: "YAML 格式文档元数据",
 					icon: <TableOfContentsIcon className="size-4" />,
 					keywords: [
 						"metadata",
@@ -437,6 +461,7 @@ function createSlashGroups(host: SlashHostDeps): Group[] {
 					],
 					label: "Frontmatter",
 					value: "frontmatter",
+					badge: "---",
 					onSelect: async (editor: PlateEditor) => {
 						if (editor.api.some({ match: { type: FRONTMATTER_KEY } })) return
 
@@ -507,9 +532,9 @@ export const createSlashInputElement = (
 					}}
 				>
 					<InlineComboboxInput
-						containerClassName="inline-flex items-center rounded-md bg-muted/60 px-1 -ml-1 -mt-0.5"
-						className="placeholder:text-muted-foreground text-sm"
-						placeholder="Type to filter..."
+						containerClassName="inline-flex items-center rounded-md bg-muted/60 px-1.5 -ml-1 -mt-0.5"
+						className="placeholder:text-muted-foreground text-sm font-normal"
+						placeholder="Type a command or filter..."
 					/>
 
 					<InlineComboboxContent gutter={6}>
@@ -524,6 +549,8 @@ export const createSlashInputElement = (
 
 										{items.map(
 											({
+												badge,
+												description,
 												focusEditor,
 												icon,
 												keywords,
@@ -541,13 +568,26 @@ export const createSlashInputElement = (
 													focusEditor={focusEditor}
 													group={group}
 													keywords={keywords}
+													className={description ? "h-auto py-1.5" : undefined}
 												>
 													<div className="mr-2.5 flex size-5 items-center justify-center text-muted-foreground/90 shrink-0">
 														{icon}
 													</div>
-													<span className="font-normal text-[13px]">
-														{label ?? value}
-													</span>
+													<div className="flex flex-col min-w-0 flex-1">
+														<span className="font-medium text-[13px] leading-tight text-foreground/90">
+															{label ?? value}
+														</span>
+														{description && (
+															<span className="text-[11px] text-muted-foreground/70 truncate mt-0.5">
+																{description}
+															</span>
+														)}
+													</div>
+													{badge && (
+														<span className="ml-auto font-mono text-[10px] font-medium text-muted-foreground/60 bg-muted/50 px-1 py-0.5 rounded border border-border/40 shrink-0">
+															{badge}
+														</span>
+													)}
 												</InlineComboboxItem>
 											),
 										)}
