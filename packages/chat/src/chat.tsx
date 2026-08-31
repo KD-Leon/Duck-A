@@ -1,8 +1,19 @@
 import { Button } from "@mdit/ui/components/button"
 import { cn } from "@mdit/ui/lib/utils"
-import { IconPaperclip, IconX } from "@tabler/icons-react"
+import {
+	IconCheck,
+	IconCopy,
+	IconFileDescription,
+	IconFilePlus,
+	IconFileText,
+	IconListCheck,
+	IconPaperclip,
+	IconPencil,
+	IconSparkles,
+	IconX,
+} from "@tabler/icons-react"
 import type { ReactNode } from "react"
-import { useCallback } from "react"
+import { useCallback, useState } from "react"
 
 import {
 	Conversation,
@@ -54,6 +65,9 @@ export type ChatProps = UseChatOptions & {
 	onOpenSettings?: () => void
 	labels?: ChatLabels
 	supportsVision?: boolean
+	activeDocumentName?: string | null
+	onInsertToActiveNote?: (content: string) => void | Promise<void>
+	onCreateNewNote?: (content: string) => void | Promise<void>
 }
 
 function AttachmentsPreview() {
@@ -98,12 +112,42 @@ function AttachmentButton({ tooltip }: { tooltip: string }) {
 	)
 }
 
+function CopyMessageButton({ content }: { content: string }) {
+	const [copied, setCopied] = useState(false)
+
+	const handleCopy = useCallback(() => {
+		navigator.clipboard.writeText(content)
+		setCopied(true)
+		setTimeout(() => setCopied(false), 2000)
+	}, [content])
+
+	return (
+		<Button
+			size="sm"
+			variant="ghost"
+			className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+			onClick={handleCopy}
+			title="复制 Markdown"
+		>
+			{copied ? (
+				<IconCheck className="size-3 text-emerald-500" />
+			) : (
+				<IconCopy className="size-3" />
+			)}
+			<span className="ml-1 text-[11px]">{copied ? "已复制" : "复制"}</span>
+		</Button>
+	)
+}
+
 export function Chat({
 	tools,
 	className,
 	onOpenSettings,
 	labels,
 	supportsVision = true,
+	activeDocumentName,
+	onInsertToActiveNote,
+	onCreateNewNote,
 	...useChatOptions
 }: ChatProps) {
 	const { enabled = true } = useChatOptions
@@ -119,12 +163,13 @@ export function Chat({
 	const submitDisabled = pending || !enabled
 
 	const newChatText = labels?.newChat ?? "New chat"
-	const noMessagesText = labels?.noMessages ?? "No messages yet"
+	const noMessagesText = labels?.noMessages ?? "智能体已就绪"
 	const startConversationText =
-		labels?.startConversation ?? "Start a conversation to see messages here"
-	const aiSettingsText = labels?.aiSettings ?? "AI settings"
-	const askAssistantText = labels?.askAssistant ?? "Ask the assistant"
-	const attachImageText = labels?.attachImage ?? "Attach image"
+		labels?.startConversation ?? "随时向 AI 助手提问、总结笔记或执行多步任务"
+	const aiSettingsText = labels?.aiSettings ?? "AI 设置"
+	const askAssistantText =
+		labels?.askAssistant ?? "向智能体提问，或按快捷键调用..."
+	const attachImageText = labels?.attachImage ?? "附加图片"
 
 	const handleSubmit = useCallback(
 		async (message: PromptInputMessage) => {
@@ -145,6 +190,14 @@ export function Chat({
 		[onSend],
 	)
 
+	const handleQuickPrompt = useCallback(
+		(promptText: string) => {
+			if (pending) return
+			void onSend({ text: promptText })
+		},
+		[onSend, pending],
+	)
+
 	const toolsContent =
 		tools === undefined
 			? undefined
@@ -153,42 +206,115 @@ export function Chat({
 				: tools
 
 	return (
-		<section className={cn("flex h-full min-h-0 flex-col", className)}>
-			<div className="flex shrink-0 p-2">
-				<Button
-					onClick={startNewChat}
-					size="sm"
-					type="button"
-					variant="outline"
-				>
-					{newChatText}
-				</Button>
+		<section
+			className={cn("flex h-full min-h-0 flex-col bg-background/50", className)}
+		>
+			{/* Top Header */}
+			<div className="flex shrink-0 items-center justify-between border-b border-border/40 p-2 gap-1.5">
+				<div className="flex items-center gap-1.5 min-w-0">
+					<Button
+						onClick={startNewChat}
+						size="sm"
+						type="button"
+						variant="outline"
+						className="h-7 text-xs rounded-md"
+					>
+						<IconSparkles className="size-3.5 mr-1 text-purple-500" />
+						{newChatText}
+					</Button>
+				</div>
+				{activeDocumentName && (
+					<div
+						className="flex items-center gap-1 max-w-[170px] truncate rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground font-mono"
+						title={`当前关联笔记: ${activeDocumentName}`}
+					>
+						<IconFileText className="size-3 shrink-0 text-primary/70" />
+						<span className="truncate">{activeDocumentName}</span>
+					</div>
+				)}
 			</div>
+
 			<Conversation className="min-h-0 flex-1">
 				<ConversationContent className="h-full">
 					{messages.length === 0 ? (
-						onOpenSettings ? (
-							<ConversationEmptyState>
-								<div className="flex flex-col items-center gap-3">
-									<div className="space-y-1">
-										<h3 className="font-medium text-sm">{noMessagesText}</h3>
-										<p className="text-muted-foreground text-sm">
-											{startConversationText}
-										</p>
-									</div>
+						<ConversationEmptyState
+							icon={
+								<IconSparkles className="size-8 text-purple-500 opacity-80" />
+							}
+							title={noMessagesText}
+							description={startConversationText}
+						>
+							<div className="flex flex-col items-center gap-4 w-full max-w-[320px]">
+								{/* Quick Prompt Chips */}
+								<div className="grid grid-cols-1 gap-1.5 w-full text-left">
+									<button
+										type="button"
+										onClick={() =>
+											handleQuickPrompt(
+												"请帮我深度总结当前活动笔记的核心要点与关键结论。",
+											)
+										}
+										className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-card hover:bg-accent/60 transition-colors text-xs text-foreground/90 group"
+									>
+										<IconFileDescription className="size-4 text-blue-500 shrink-0" />
+										<div className="flex flex-col">
+											<span className="font-medium">📝 总结当前笔记</span>
+											<span className="text-[10px] text-muted-foreground">
+												提炼核心要点与脉络
+											</span>
+										</div>
+									</button>
+
+									<button
+										type="button"
+										onClick={() =>
+											handleQuickPrompt(
+												"请分析当前笔记中的待办行动项，整理成清晰规范的 Markdown Todo 清单。",
+											)
+										}
+										className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-card hover:bg-accent/60 transition-colors text-xs text-foreground/90 group"
+									>
+										<IconListCheck className="size-4 text-emerald-500 shrink-0" />
+										<div className="flex flex-col">
+											<span className="font-medium">🔍 提取待办清单</span>
+											<span className="text-[10px] text-muted-foreground">
+												提取 Action Items
+											</span>
+										</div>
+									</button>
+
+									<button
+										type="button"
+										onClick={() =>
+											handleQuickPrompt(
+												"请帮我润色当前笔记的语言表达，修正语病，并提升排版呼吸感与结构清晰度。",
+											)
+										}
+										className="flex items-center gap-2 p-2 rounded-lg border border-border/50 bg-card hover:bg-accent/60 transition-colors text-xs text-foreground/90 group"
+									>
+										<IconPencil className="size-4 text-amber-500 shrink-0" />
+										<div className="flex flex-col">
+											<span className="font-medium">✍️ 润色与结构优化</span>
+											<span className="text-[10px] text-muted-foreground">
+												提升语言与排版质感
+											</span>
+										</div>
+									</button>
+								</div>
+
+								{onOpenSettings && (
 									<Button
 										onClick={onOpenSettings}
 										size="sm"
 										type="button"
-										variant="outline"
+										variant="ghost"
+										className="text-xs text-muted-foreground"
 									>
 										{aiSettingsText}
 									</Button>
-								</div>
-							</ConversationEmptyState>
-						) : (
-							<ConversationEmptyState />
-						)
+								)}
+							</div>
+						</ConversationEmptyState>
 					) : (
 						messages.map((message, index) => {
 							const isLastMessage = index === messages.length - 1
@@ -224,6 +350,39 @@ export function Chat({
 													/>
 												)}
 												<MessageResponse>{message.content}</MessageResponse>
+
+												{/* Message Bottom Action Bar */}
+												<div className="flex items-center gap-1 pt-1.5 mt-2 border-t border-border/30 opacity-70 hover:opacity-100 transition-opacity">
+													<CopyMessageButton content={message.content} />
+													{onInsertToActiveNote && (
+														<Button
+															size="sm"
+															variant="ghost"
+															className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+															onClick={() =>
+																onInsertToActiveNote(message.content)
+															}
+															title="追加插入到当前笔记文末"
+														>
+															<IconFileText className="size-3" />
+															<span className="ml-1 text-[11px]">插入笔记</span>
+														</Button>
+													)}
+													{onCreateNewNote && (
+														<Button
+															size="sm"
+															variant="ghost"
+															className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+															onClick={() => onCreateNewNote(message.content)}
+															title="另存为新笔记"
+														>
+															<IconFilePlus className="size-3" />
+															<span className="ml-1 text-[11px]">
+																存为新笔记
+															</span>
+														</Button>
+													)}
+												</div>
 											</div>
 										)}
 									</MessageContent>

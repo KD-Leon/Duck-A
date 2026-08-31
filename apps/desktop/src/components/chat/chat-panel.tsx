@@ -7,7 +7,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@mdit/ui/components/select"
-import { readTextFile } from "@tauri-apps/plugin-fs"
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs"
 import { fetch as tauriHttpFetch } from "@tauri-apps/plugin-http"
 import { motion } from "motion/react"
 import { useCallback, useMemo } from "react"
@@ -157,6 +157,43 @@ function ChatPanelContent() {
 		[enabledChatModels, selectModel],
 	)
 
+	const activeTabPath = useStore((state) => state.getActiveTabPath())
+	const workspacePath = useStore((state) => state.workspacePath)
+	const activeDocumentName = useMemo(() => {
+		if (!activeTabPath) return null
+		return activeTabPath.split("/").pop() ?? activeTabPath
+	}, [activeTabPath])
+
+	const handleInsertToActiveNote = useCallback(
+		async (content: string) => {
+			if (!activeTabPath) return
+			try {
+				const current = await readTextFile(activeTabPath)
+				const newContent = `${current}\n\n${content}`
+				await writeTextFile(activeTabPath, newContent)
+			} catch (err) {
+				console.error("Failed to insert to active note", err)
+			}
+		},
+		[activeTabPath],
+	)
+
+	const handleCreateNewNote = useCallback(
+		async (content: string) => {
+			if (!workspacePath) return
+			try {
+				const dateStr = new Date().toISOString().slice(0, 10)
+				const fileName = `AI-Note-${dateStr}-${Date.now().toString().slice(-4)}.md`
+				const filePath = `${workspacePath}/${fileName}`
+				await writeTextFile(filePath, content)
+				await useStore.getState().refreshWorkspaceEntries()
+			} catch (err) {
+				console.error("Failed to create new note from AI", err)
+			}
+		},
+		[workspacePath],
+	)
+
 	return (
 		<Chat
 			id="desktop-chat"
@@ -170,6 +207,9 @@ function ChatPanelContent() {
 			chatHistoryRounds={chatHistoryRounds}
 			systemPrompt={systemPrompt || undefined}
 			labels={t.chat}
+			activeDocumentName={activeDocumentName}
+			onInsertToActiveNote={handleInsertToActiveNote}
+			onCreateNewNote={handleCreateNewNote}
 			tools={({ pending }) => (
 				<Select
 					disabled={pending || enabledChatModels.length === 0}
